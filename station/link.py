@@ -64,8 +64,9 @@ class RobotLink:
     # ------------------------------------------------------------- commands
 
     def set_host(self, host: str) -> None:
+        """Connect to ``host``. Calling it with the current host reconnects right away."""
         host = host.strip()
-        if not host or host == self._host:
+        if not host:
             return
         self._host = host
         self._robot_ip = None
@@ -106,8 +107,10 @@ class RobotLink:
                 data, (source_ip, _) = self._udp.recvfrom(MAX_DATAGRAM_BYTES)
             except BlockingIOError:
                 break
-            except (ConnectionResetError, OSError):
-                continue
+            except ConnectionResetError:
+                continue  # Windows: an earlier command found nobody listening
+            except OSError:
+                break
             msg = decode(data)
             if msg is None or msg["type"] != MsgType.TELEMETRY or source_ip != self._robot_ip:
                 continue

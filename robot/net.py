@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import queue
 import socket
 import threading
@@ -21,41 +22,57 @@ class CommandReceiver:
     """Receives drive commands over UDP and sends telemetry back to the sender.
 
     Never blocks: :meth:`poll` drains whatever has arrived and returns only the
-    newest command.
+    newest command. Only one driver station is obeyed at a time: commands from
+    a second address are ignored until the current one has been silent for
+    ``PEER_TIMEOUT_S`` (a restarted station gets a new port, so it takes over
+    after that pause).
     """
 
-    # A sequence number this far behind the last one means the station restarted.
-    _RESTART_GAP = 1000
+    PEER_TIMEOUT_S = 1.0
 
     def __init__(self, port: int = UDP_PORT) -> None:
         self._sock = open_udp_socket(port)
         self._peer: Optional[tuple[str, int]] = None
+        self._peer_seen = -math.inf
         self._last_seq: Optional[int] = None
+        self._ignored: Optional[tuple[str, int]] = None
 
     @property
     def peer(self) -> Optional[tuple[str, int]]:
         return self._peer
 
-    def poll(self) -> Optional[DriveCommand]:
+    @property
+    def port(self) -> int:
+        return self._sock.getsockname()[1]
+
+    def poll(self, now: float) -> Optional[DriveCommand]:
         newest = None
         while True:
             try:
                 data, address = self._sock.recvfrom(MAX_DATAGRAM_BYTES)
             except BlockingIOError:
                 return newest
-            except (ConnectionResetError, OSError):
-                continue
+            except ConnectionResetError:
+                continue  # Windows: an earlier telemetry send found nobody listening
+            except OSError as exc:
+                log.error("Command socket error: %s", exc)
+                return newest
             msg = decode(data)
             command = DriveCommand.from_message(msg) if msg else None
             if command is None:
                 continue
-            stale = (address == self._peer and self._last_seq is not None
-                     and 0 < self._last_seq - command.seq < self._RESTART_GAP)
-            if stale:
-                continue  # arrived out of order behind a newer command
             if address != self._peer:
+                if now - self._peer_seen < self.PEER_TIMEOUT_S:
+                    if address != self._ignored:
+                        log.warning("Ignoring commands from %s:%d: already driven from %s:%d",
+                                    *address, *self._peer)
+                        self._ignored = address
+                    continue
                 log.info("Driver station at %s:%d", *address)
-            self._peer, self._last_seq = address, command.seq
+                self._peer, self._last_seq, self._ignored = address, None, None
+            elif self._last_seq is not None and command.seq <= self._last_seq:
+                continue  # duplicate, or arrived out of order behind a newer command
+            self._last_seq, self._peer_seen = command.seq, now
             newest = command
 
     def send_telemetry(self, msg: dict[str, Any]) -> None:
@@ -78,25 +95,36 @@ class _Client:
         self.sock = sock
         self.address = address
         self.outbox: "queue.Queue[Optional[bytes]]" = queue.Queue(maxsize=1000)
-        self.alive = True
+        self._lock = threading.Lock()
+        self._alive = True
+
+    @property
+    def alive(self) -> bool:
+        return self._alive
 
     def send(self, msg: dict[str, Any]) -> None:
-        if not self.alive:
+        if not self._alive:
             return
         try:
             self.outbox.put_nowait(encode_line(msg))
         except queue.Full:
-            pass  # drop rather than block; the station re-requests config on reconnect
+            pass  # drop rather than block; the station gets the full config again on reconnect
 
     def close(self) -> None:
-        if self.alive:
-            self.alive = False
-            self.outbox.put(None)
-            try:
-                self.sock.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass
-            self.sock.close()
+        """Safe to call from any thread, any number of times; never blocks."""
+        with self._lock:
+            if not self._alive:
+                return
+            self._alive = False
+        try:
+            self.outbox.put_nowait(None)  # wakes the writer; if the queue is full the closed socket stops it
+        except queue.Full:
+            pass
+        try:
+            self.sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        self.sock.close()
 
 
 @dataclass
@@ -129,6 +157,10 @@ class ControlServer:
             clients = list(self._clients)
         for client in clients:
             client.send(msg)
+
+    @property
+    def port(self) -> int:
+        return self._server.getsockname()[1]
 
     @property
     def client_count(self) -> int:
@@ -178,7 +210,7 @@ class ControlServer:
         try:
             while True:
                 data = client.outbox.get()
-                if data is None:
+                if data is None or not client.alive:
                     return
                 client.sock.sendall(data)
         except OSError:

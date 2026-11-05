@@ -31,6 +31,8 @@ class StationApp:
 
     * The robot can only be enabled while the controller and the robot are
       both connected, and it is disabled automatically if either drops out.
+    * If the robot disables itself (its watchdog tripped), the station
+      disables too, so the driver has to enable again on purpose.
     * The space bar disables from anywhere in the window.
     """
 
@@ -38,19 +40,23 @@ class StationApp:
     UI_REFRESH_TICKS = 3          # redraw the UI at about 17 Hz
     TELEMETRY_PRINT_S = 0.5       # "Show telemetry" prints at 2 Hz
     SETTINGS_SAVE_DELAY_S = 1.0   # save slider changes once they settle
+    ENABLE_GRACE_S = 1.0          # time the robot gets to report "enabled" after we enable
 
-    def __init__(self, root: tk.Tk, settings: StationSettings) -> None:
+    def __init__(self, root: tk.Tk, settings: StationSettings, host: Optional[str] = None) -> None:
+        """``host`` overrides the saved robot address for this session without saving it."""
         self.root = root
         self.settings = settings
+        self._host = host or settings.robot_host
         theme.apply_theme(root)
         root.title("Differential Swerve Driver Station")
         root.geometry("1440x940")
         root.minsize(1200, 820)
 
-        self.link = RobotLink(settings.robot_host)
+        self.link = RobotLink(self._host)
         self.gamepad = Gamepad()
 
         self._enabled = False
+        self._enabled_at = 0.0
         self._seq = 0
         self._zero_presses = 0
         self._home_presses = 0
@@ -68,7 +74,7 @@ class StationApp:
         self._build()
         root.bind_all("<space>", lambda _event: self._disable("Space bar"))
         root.protocol("WM_DELETE_WINDOW", self.close)
-        self.terminal.write("station", f"Driver station started. Looking for the robot at '{settings.robot_host}'.")
+        self.terminal.write("station", f"Driver station started. Looking for the robot at '{self._host}'.")
         self._tick_job = root.after(self.TICK_MS, self._tick)
 
     # ------------------------------------------------------------------ layout
@@ -95,7 +101,7 @@ class StationApp:
         self._pad_light = StatusLight(block.add_cell("Controller"))
         self._pad_light.pack(anchor="w", pady=(2, 0))
         address = block.add_cell("Robot address")
-        self._host_var = tk.StringVar(value=self.settings.robot_host)
+        self._host_var = tk.StringVar(value=self._host)
         host_entry = ttk.Entry(address, textvariable=self._host_var, width=20, font=theme.FONT_MONO)
         host_entry.pack(side="left", pady=(2, 0))
         host_entry.bind("<Return>", lambda _event: self._connect())
@@ -168,6 +174,10 @@ class StationApp:
 
         for msg in self.link.poll():
             self._handle_message(msg)
+        if self._enabled and self.link.telemetry_alive and self._telemetry \
+                and self._telemetry.get("mode") == "disabled" \
+                and time.monotonic() - self._enabled_at > self.ENABLE_GRACE_S:
+            self._disable("The robot disabled itself (it stopped hearing commands). Enable again to continue")
 
         self._ticks += 1
         if self._ticks % self.UI_REFRESH_TICKS == 0:
@@ -224,6 +234,7 @@ class StationApp:
             self.terminal.write("station", "The robot is not connected", "WARNING")
         else:
             self._enabled = True
+            self._enabled_at = time.monotonic()
             self.terminal.write("station", "Enabled")
 
     def _disable(self, reason: str) -> None:
@@ -234,6 +245,10 @@ class StationApp:
     def _set_zero(self) -> None:
         if not self.link.telemetry_alive:
             self.terminal.write("station", "Swerve Set Zero needs the robot connected", "WARNING")
+            return
+        if self._enabled:
+            self.terminal.write("station", "Swerve Set Zero works while disabled: disable, line the wheels "
+                                           "up by hand, then press it", "WARNING")
             return
         self._zero_presses += 1
         self.terminal.write("station", "Swerve Set Zero sent")
@@ -256,6 +271,7 @@ class StationApp:
         host = self._host_var.get().strip()
         if not host:
             return
+        self._host = host
         self.settings.robot_host = host
         self.settings.save()
         self.link.set_host(host)

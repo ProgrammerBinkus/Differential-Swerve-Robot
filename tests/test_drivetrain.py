@@ -88,3 +88,19 @@ def test_encoder_failure_stops_module(rig):
     fl = drivetrain.modules[0]
     assert fl.fault
     assert (fl.drive, fl.steer) == (0.0, 0.0)
+
+
+def test_rezero_skips_a_faulted_module(rig):
+    hardware, drivetrain = rig
+    hardware.encoders["E2"].fail = True  # FL
+    run(rig, 0.1, lambda d: None)
+    assert "FL" not in drivetrain.rezero()
+
+
+def test_home_never_reports_done_with_no_working_encoders(rig):
+    hardware, drivetrain = rig
+    for encoder in hardware.encoders.values():
+        encoder.fail = True
+    run(rig, 0.1, lambda d: None)
+    assert not drivetrain.any_ready
+    assert drivetrain.home() is False

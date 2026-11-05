@@ -88,6 +88,13 @@ class LineBuffer:
         return messages
 
 
+def _whole(value: Any) -> int:
+    """A JSON integer. Floats, strings and booleans are rejected."""
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise TypeError(f"expected an integer, got {value!r}")
+    return value
+
+
 def _unit(value: Any) -> float:
     """Convert to a float in [-1, 1]; non-finite values become 0."""
     number = float(value)
@@ -126,13 +133,13 @@ class DriveCommand:
             return None
         try:
             return cls(
-                seq=int(msg["seq"]),
-                enabled=bool(msg["enabled"]),
+                seq=_whole(msg["seq"]),
+                enabled=msg["enabled"] is True,  # only a real JSON true enables; "false" must not
                 vx=_unit(msg["vx"]),
                 vy=_unit(msg["vy"]),
                 omega=_unit(msg["omega"]),
-                zero_presses=int(msg["zero_presses"]),
-                home_presses=int(msg["home_presses"]),
+                zero_presses=_whole(msg["zero_presses"]),
+                home_presses=_whole(msg["home_presses"]),
             )
         except (KeyError, TypeError, ValueError, OverflowError):
             return None

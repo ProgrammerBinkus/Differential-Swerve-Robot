@@ -61,6 +61,11 @@ class Drivetrain:
         for module in self.modules:
             module.apply_tuning(tuning)
 
+    @property
+    def any_ready(self) -> bool:
+        """True if at least one module has a working encoder."""
+        return any(module.ready for module in self.modules)
+
     def read_sensors(self) -> None:
         for module in self.modules:
             module.read_sensor()
@@ -80,9 +85,14 @@ class Drivetrain:
         self._output(plans)
 
     def home(self) -> bool:
-        """Steer every module to zero. Returns True once all working modules are there."""
+        """Steer every module to zero. Returns True once every working module is there.
+
+        Returns False while no module is working, so callers never report a
+        robot with dead encoders as parked.
+        """
         self._output([module.plan_home() for module in self.modules])
-        return all(module.at_target(self._home_tolerance_rad) for module in self.modules if module.ready)
+        ready = [module for module in self.modules if module.ready]
+        return bool(ready) and all(module.at_target(self._home_tolerance_rad) for module in ready)
 
     def _output(self, plans: list[tuple[float, float]]) -> None:
         scale = steer_first_scale(plans)
@@ -101,8 +111,11 @@ class Drivetrain:
             module.hold_current_angle()
 
     def rezero(self) -> dict[str, int]:
-        """Make every module's current angle its zero. Returns the new offsets."""
-        return {module.name: module.rezero() for module in self.modules if module.raw is not None}
+        """Make every working module's current angle its zero. Returns the new offsets.
+
+        A faulted module is skipped: its last reading is stale.
+        """
+        return {module.name: module.rezero() for module in self.modules if module.ready}
 
     def telemetry(self) -> dict[str, dict[str, Any]]:
         return {module.name: module.telemetry() for module in self.modules}

@@ -19,7 +19,7 @@ def _enable_sharp_text_on_windows() -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="station", description="Differential swerve driver station.")
-    parser.add_argument("--host", help="robot hostname or IP (default: last one used, or orangepi.local)")
+    parser.add_argument("--host", help="robot hostname or IP for this session (default: the saved address)")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(name)s: %(message)s")
 
@@ -28,10 +28,8 @@ def main(argv: list[str] | None = None) -> int:
 
     _enable_sharp_text_on_windows()
     settings = StationSettings.load()
-    if args.host:
-        settings.robot_host = args.host
     root = tk.Tk()
-    StationApp(root, settings)
+    StationApp(root, settings, host=args.host)  # --host is for this session only; Connect saves an address
     root.mainloop()
     return 0
 

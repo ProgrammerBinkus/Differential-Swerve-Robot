@@ -138,7 +138,8 @@ class DriveTab(ttk.Frame):
         self._zero_button.grid(row=0, column=0, sticky="ew", padx=(0, 4))
         self._home_button = ttk.Button(buttons, text="Return to Zero  +", command=self._actions.return_to_zero)
         self._home_button.grid(row=0, column=1, sticky="ew", padx=(4, 0))
-        ttk.Label(card, text="Space disables at any time. Return to Zero before switching off.",
+        ttk.Label(card, text="Space disables at any time. Set Zero works while disabled; "
+                             "Return to Zero before switching off.",
                   style="CardMuted.TLabel", wraplength=360).grid(row=4, column=0, sticky="w", pady=(10, 0))
         return card
 
@@ -198,7 +199,7 @@ class DriveTab(ttk.Frame):
             self._enable_button.configure(text="ENABLE", style="Enable.TButton")
             self._enable_button.state(["!disabled"] if can_enable else ["disabled"])
         self._mode_label.configure(text=mode)
-        self._zero_button.state(["!disabled"] if robot_ready else ["disabled"])
+        self._zero_button.state(["!disabled"] if robot_ready and not enabled else ["disabled"])
         self._home_button.state(["!disabled"] if enabled else ["disabled"])
 
     def show_inputs(self, vx: float, vy: float, omega: float) -> None:

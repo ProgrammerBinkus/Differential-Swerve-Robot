@@ -58,18 +58,24 @@ class Gamepad:
         if self._pad is None:
             return GamepadState()
 
-        def axis(which: int) -> float:
-            return max(-1.0, min(1.0, self._pad.get_axis(which) / _AXIS_SCALE))
+        pad = self._pad
 
-        return GamepadState(
-            connected=True,
-            name=self._pad.name,
-            left_x=axis(pygame.CONTROLLER_AXIS_LEFTX),
-            left_y=axis(pygame.CONTROLLER_AXIS_LEFTY),
-            right_x=axis(pygame.CONTROLLER_AXIS_RIGHTX),
-            back=bool(self._pad.get_button(pygame.CONTROLLER_BUTTON_BACK)),
-            start=bool(self._pad.get_button(pygame.CONTROLLER_BUTTON_START)),
-        )
+        def axis(which: int) -> float:
+            return max(-1.0, min(1.0, pad.get_axis(which) / _AXIS_SCALE))
+
+        try:
+            return GamepadState(
+                connected=True,
+                name=pad.name,
+                left_x=axis(pygame.CONTROLLER_AXIS_LEFTX),
+                left_y=axis(pygame.CONTROLLER_AXIS_LEFTY),
+                right_x=axis(pygame.CONTROLLER_AXIS_RIGHTX),
+                back=bool(pad.get_button(pygame.CONTROLLER_BUTTON_BACK)),
+                start=bool(pad.get_button(pygame.CONTROLLER_BUTTON_START)),
+            )
+        except pygame.error:
+            self._pad = None  # unplugged between the attached() check and the reads
+            return GamepadState()
 
     def _open_first(self) -> None:
         for index in range(controller.get_count()):

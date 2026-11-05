@@ -53,7 +53,10 @@ class ConfigStore:
     def save(self, config: dict[str, Any]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_suffix(self.path.suffix + ".tmp")
-        temporary.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+        with open(temporary, "w", encoding="utf-8") as file:
+            file.write(json.dumps(config, indent=2) + "\n")
+            file.flush()
+            os.fsync(file.fileno())  # on disk before the rename, or a power cut can leave an empty file
         if self.path.exists():
             shutil.copy2(self.path, self.path.with_suffix(self.path.suffix + ".bak"))
         os.replace(temporary, self.path)

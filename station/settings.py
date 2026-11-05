@@ -4,12 +4,22 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
 log = logging.getLogger(__name__)
 
 SETTINGS_PATH = Path(__file__).resolve().parent.parent / "station_settings.json"
+
+
+# Allowed range of each number, matching the sliders.
+RANGES = {
+    "drive_sensitivity": (0.0, 100.0),
+    "drive_deadzone": (0.0, 50.0),
+    "turn_sensitivity": (0.0, 100.0),
+    "turn_deadzone": (0.0, 50.0),
+}
 
 
 @dataclass
@@ -35,10 +45,12 @@ class StationSettings:
         for field in fields(cls):
             value = stored.get(field.name)
             default = getattr(settings, field.name)
-            if isinstance(default, str) and isinstance(value, str):
-                setattr(settings, field.name, value)
-            elif isinstance(default, float) and isinstance(value, (int, float)) and not isinstance(value, bool):
-                setattr(settings, field.name, float(value))
+            if isinstance(default, str) and isinstance(value, str) and value.strip():
+                setattr(settings, field.name, value.strip())
+            elif isinstance(default, float) and isinstance(value, (int, float)) and not isinstance(value, bool) \
+                    and math.isfinite(value):
+                low, high = RANGES[field.name]
+                setattr(settings, field.name, max(low, min(high, float(value))))
         return settings
 
     def save(self, path: Path = SETTINGS_PATH) -> None:

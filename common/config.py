@@ -33,9 +33,16 @@ ENCODER_IDS = ("E1", "E2", "E3", "E4")
 
 ENCODER_COUNTS = 16384  # MT6701 reports a 14-bit angle per revolution
 
-# Sections the driver station may change at runtime.
+# What the driver station may change at runtime: for each section, the keys
+# each entry may set. Offsets are written only by Swerve Set Zero on the robot,
+# and the H-bridge pin wiring only in robot_config.json.
 EDITABLE_SECTIONS = ("motors", "encoders", "modules", "tuning", "field_relative")
 MAPPING_SECTIONS = ("motors", "encoders", "modules")
+_EDITABLE_ENTRY_KEYS = {
+    "motors": {"hbridge", "channel"},
+    "encoders": {"bus"},
+    "modules": {"motor_a", "motor_b", "encoder", "invert_a", "invert_b", "invert_encoder"},
+}
 
 
 class ConfigError(ValueError):
@@ -172,6 +179,18 @@ def merge_config(base: dict[str, Any], update: dict[str, Any]) -> dict[str, Any]
     changed remotely. The result still needs :func:`validate_config`.
     """
     forbidden = [key for key in update if key not in EDITABLE_SECTIONS]
+    for section, allowed in _EDITABLE_ENTRY_KEYS.items():
+        entries = update.get(section, {})
+        if not isinstance(entries, dict):
+            raise ConfigError(f"'{section}' must be an object")
+        for entry_id, entry in entries.items():
+            if not isinstance(entry, dict):
+                raise ConfigError(f"'{section}.{entry_id}' must be an object")
+            forbidden += [f"{section}.{entry_id}.{key}" for key in entry if key not in allowed]
+    tuning = update.get("tuning", {})
+    if not isinstance(tuning, dict):
+        raise ConfigError("'tuning' must be an object")
+    forbidden += [f"tuning.{key}" for key in tuning if key not in TUNING_BY_KEY]
     if forbidden:
         raise ConfigError(f"These settings cannot be changed remotely: {', '.join(forbidden)}")
     result = copy.deepcopy(base)

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from common.config import MAPPING_SECTIONS, ConfigError, merge_config, validate_config
-from common.protocol import TELEMETRY_RATE_HZ, DriveCommand, MsgType
+from common.protocol import TCP_PORT, TELEMETRY_RATE_HZ, UDP_PORT, DriveCommand, MsgType
 from robot.config_store import ConfigStore
 from robot.hardware import HardwareError, open_hardware
 from robot.net import BroadcastLogHandler, CommandReceiver, ControlEvent, ControlServer
@@ -35,22 +35,29 @@ class Robot:
 
     * Motors only run while the station says "enabled" **and** commands are
       fresh. No command for ``watchdog_s`` (250 ms) disables the robot.
-    * Mapping changes are only accepted while disabled.
+    * After start-up or a watchdog trip, the robot will not enable until the
+      station has sent "disabled" at least once, so a station that was left
+      enabled cannot start the robot moving the moment the link comes back.
+    * Mapping changes and Swerve Set Zero are only accepted while disabled.
     * On shutdown the wheels are steered back to zero, as the BOM requires.
     """
 
     HOMING_TIMEOUT_S = 4.0
     SHUTDOWN_HOMING_S = 2.5
 
-    def __init__(self, config_path: Path, simulate: bool) -> None:
+    def __init__(self, config_path: Path, simulate: bool, udp_port: int = UDP_PORT,
+                 tcp_port: int = TCP_PORT) -> None:
         self._store = ConfigStore(config_path)
         self.config = self._store.load()
         self._hardware = open_hardware(self.config, simulate)
+        self._receiver: CommandReceiver | None = None
         try:
             self._drivetrain = Drivetrain.from_config(self._hardware, self.config)
-            self._receiver = CommandReceiver()
-            self._control = ControlServer()
+            self._receiver = CommandReceiver(udp_port)
+            self._control = ControlServer(tcp_port)
         except Exception:
+            if self._receiver is not None:
+                self._receiver.close()
             self._hardware.close()
             raise
         self._log_handler = BroadcastLogHandler(self._control)
@@ -61,8 +68,12 @@ class Robot:
         accel = self.config["tuning"]["accel_limit"]
         self._limiters = [RateLimiter(accel) for _ in range(3)]  # vx, vy, omega
 
+        if self.config["field_relative"] and self._hardware.imu.yaw_deg is None:
+            log.warning("field_relative is on but the MPU-6050 is not implemented; driving robot-relative")
+
         self._stop = threading.Event()
         self._mode = Mode.DISABLED
+        self._needs_disabled_command = True  # see the class docstring
         self._command = DriveCommand()
         self._command_time = -math.inf
         self._zero_presses: int | None = None
@@ -107,17 +118,19 @@ class Robot:
         self._hardware.imu.update(dt)
         self._handle_control_messages()
 
-        command = self._receiver.poll()
+        command = self._receiver.poll(now)
         if command is not None:
             self._command, self._command_time = command, now
         fresh = now - self._command_time < self.config["watchdog_s"]
         if fresh:
+            if not self._command.enabled:
+                self._needs_disabled_command = False
             self._handle_buttons(self._command, now)
         else:
             # The station may restart and reset its counters; resync on its next command.
             self._zero_presses = self._home_presses = None
 
-        self._update_mode(fresh and self._command.enabled, fresh)
+        self._update_mode(fresh and self._command.enabled and not self._needs_disabled_command, fresh)
 
         if self._mode is Mode.DISABLED:
             self._drivetrain.stop()
@@ -135,7 +148,9 @@ class Robot:
                 if fresh:
                     log.info("Disabled by the driver station")
                 else:
-                    log.warning("Disabled: no commands for %.0f ms (watchdog)", self.config["watchdog_s"] * 1000)
+                    log.warning("Disabled: no commands for %.0f ms (watchdog). Enable again from the "
+                                "driver station.", self.config["watchdog_s"] * 1000)
+                    self._needs_disabled_command = True
                 self._mode = Mode.DISABLED
                 self._drivetrain.stop()
         elif self._mode is Mode.DISABLED:
@@ -167,9 +182,12 @@ class Robot:
         self._zero_presses, self._home_presses = command.zero_presses, command.home_presses
 
     def _set_zero(self) -> None:
+        if self._mode is not Mode.DISABLED:
+            log.warning("Swerve Set Zero ignored: disable the robot and line the wheels up by hand first")
+            return
         offsets = self._drivetrain.rezero()
         if not offsets:
-            log.error("Swerve Set Zero ignored: no encoder readings yet")
+            log.error("Swerve Set Zero ignored: no working encoders")
             return
         for name, offset in offsets.items():
             self.config["modules"][name]["offset"] = offset
@@ -180,6 +198,9 @@ class Robot:
     def _start_homing(self, now: float) -> None:
         if self._mode is Mode.DISABLED:
             log.warning("Return to Zero needs the robot enabled")
+            return
+        if not self._drivetrain.any_ready:
+            log.error("Return to Zero ignored: no working encoders")
             return
         log.info("Return to Zero")
         self._mode = Mode.HOMING
@@ -224,15 +245,18 @@ class Robot:
             try:
                 self._hardware.reconfigure(merged)
             except HardwareError as exc:
-                self._hardware.reconfigure(self.config)
+                try:
+                    self._hardware.reconfigure(self.config)
+                except HardwareError as restore_exc:
+                    log.error("Could not restore the previous encoder buses: %s", restore_exc)
                 return result(False, str(exc))
             self._drivetrain.stop()
             self._drivetrain = Drivetrain.from_config(self._hardware, merged)
             log.warning("Module mapping changed; steering angles re-read from the encoders")
         else:
             self._drivetrain.apply_tuning(merged["tuning"])
-            for limiter in self._limiters:
-                limiter.rate_per_s = merged["tuning"]["accel_limit"]
+        for limiter in self._limiters:
+            limiter.rate_per_s = merged["tuning"]["accel_limit"]
 
         self.config = merged
         self._save_config()
@@ -273,25 +297,31 @@ class Robot:
     # -------------------------------------------------------------- shutdown
 
     def _shutdown(self) -> None:
-        log.info("Shutting down: returning wheels to zero")
         try:
-            deadline = last = time.perf_counter()
-            deadline += self.SHUTDOWN_HOMING_S
-            while True:
-                now = time.perf_counter()
-                self._hardware.step(now - last)
-                last = now
-                self._drivetrain.read_sensors()
-                if self._drivetrain.home():
-                    log.info("Wheels at zero")
-                    break
-                if now > deadline:
-                    log.warning("Wheels did not reach zero within %.1f s", self.SHUTDOWN_HOMING_S)
-                    break
-                time.sleep(self._period_s)
+            if self._drivetrain.any_ready:
+                self._home_before_exit()
+            else:
+                log.warning("Shutting down without returning to zero: no working encoders")
         finally:
             self._drivetrain.stop()
             self._hardware.close()
             logging.getLogger().removeHandler(self._log_handler)
             self._control.close()
             self._receiver.close()
+
+    def _home_before_exit(self) -> None:
+        log.info("Shutting down: returning wheels to zero")
+        last = time.perf_counter()
+        deadline = last + self.SHUTDOWN_HOMING_S
+        while True:
+            now = time.perf_counter()
+            self._hardware.step(now - last)
+            last = now
+            self._drivetrain.read_sensors()
+            if self._drivetrain.home():
+                log.info("Wheels at zero")
+                return
+            if now > deadline:
+                log.warning("Wheels did not reach zero within %.1f s", self.SHUTDOWN_HOMING_S)
+                return
+            time.sleep(self._period_s)

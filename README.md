@@ -55,6 +55,8 @@ station** launch configuration in VS Code:
 .\venv\Scripts\python main.py station --host localhost
 ```
 
+`--host` only applies to that session; pressing Connect saves an address for next time.
+
 The simulator models each module as an ideal differential, so wheel headings and motion arrows
 respond to the controller exactly as the real robot should once it is configured.
 
@@ -122,10 +124,14 @@ Safety rules:
 
 - The robot only drives while the station says enabled and commands keep arriving. No command for
   250 ms disables it (watchdog).
+- After start-up or a watchdog trip the robot stays disabled until you enable again from the station,
+  even if the link comes back with the station still set to enabled.
 - The station can only enable with both the controller and the robot connected, and disables itself if
-  either drops out.
-- Mapping changes are only accepted while the robot is disabled. Tuning changes apply live.
-- A module whose encoder stops answering coasts until it answers again.
+  either drops out or the robot disables itself.
+- Only one driver station drives at a time. A second one is ignored until the first has been silent
+  for a second.
+- Swerve Set Zero and mapping changes only work while the robot is disabled. Tuning changes apply live.
+- A module whose encoder stops answering coasts until it answers again, and is skipped by Set Zero.
 
 ## Driver station tabs
 

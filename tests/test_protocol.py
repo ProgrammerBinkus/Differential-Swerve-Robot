@@ -28,3 +28,15 @@ def test_line_buffer_reassembles_split_messages():
     data = encode_line({"type": "a"}) + encode_line({"type": "b"})
     assert buffer.feed(data[:5]) == []
     assert [m["type"] for m in buffer.feed(data[5:])] == ["a", "b"]
+
+
+def test_only_a_real_true_enables():
+    msg = DriveCommand(seq=1).to_message()
+    msg["enabled"] = "false"
+    assert DriveCommand.from_message(msg).enabled is False
+
+
+def test_non_integer_counters_are_rejected():
+    msg = DriveCommand(seq=1).to_message()
+    msg["seq"] = 1.5
+    assert DriveCommand.from_message(msg) is None

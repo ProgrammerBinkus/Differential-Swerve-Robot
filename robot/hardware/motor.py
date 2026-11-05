@@ -70,7 +70,10 @@ class HBridgeChannel:
             pwm.enable()
             direction = open_output(spec["dir"])
         except Exception:
-            pwm.close()
+            try:
+                pwm.disable()
+            finally:
+                pwm.close()
             raise
         return cls(name, pwm, direction)
 
@@ -92,14 +95,12 @@ class HBridgeChannel:
         self.set(0.0)
 
     def close(self) -> None:
-        try:
-            self.stop()
-            self._pwm.disable()
-        except Exception as exc:  # closing must never raise during shutdown
-            log.warning("%s: error while stopping: %s", self.name, exc)
-        finally:
-            self._pwm.close()
-            self._direction.close()
+        """Stop, then release both pins. Never raises: it runs during shutdown."""
+        for action in (self.stop, self._pwm.disable, self._pwm.close, self._direction.close):
+            try:
+                action()
+            except Exception as exc:
+                log.warning("%s: error while closing: %s", self.name, exc)
 
 
 class SimMotorOutput:

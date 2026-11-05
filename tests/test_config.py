@@ -50,3 +50,14 @@ def test_merge_keeps_untouched_keys():
     assert merged["modules"]["FL"]["offset"] == 1234
     assert merged["modules"]["FL"]["invert_a"] is True
     assert base["modules"]["FL"]["invert_a"] is False  # base not modified
+
+
+@pytest.mark.parametrize("update", [
+    {"modules": {"FL": {"offset": 5}}},          # only Swerve Set Zero writes offsets
+    {"tuning": {"not_a_setting": 1.0}},
+    {"encoders": {"E1": {"sda_pin": 9}}},
+    {"modules": "FL"},
+])
+def test_remote_update_rejects_keys_it_may_not_set(update):
+    with pytest.raises(ConfigError):
+        merge_config(default_config(), update)
