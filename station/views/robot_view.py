@@ -38,13 +38,38 @@ def _heading_vector(angle_deg: float) -> tuple[float, float]:
     return -math.sin(rad), -math.cos(rad)
 
 
-def _rounded_square(x0: float, y0: float, x1: float, y1: float, r: float, steps: int = 10) -> list[float]:
+def _chassis_outline(rim: float = 170, edge: float = 65, steps: int = 24) -> list[float]:
+    """The CAD outline: a rim around each corner pod, joined by straight sides set in between the pods.
+
+    Each pod's arc runs between the two points where its rim circle meets the
+    neighboring sides; the polygon is drawn smoothed, which rounds the joins.
+    """
+    inset = MODULE_CENTERS["FL"][0] - edge             # pod center to side line
+    reach = math.sqrt(rim * rim - inset * inset)       # along the side, to the join
+    join = math.degrees(math.atan2(reach, inset))
+    span = 90 + 2 * join
     points: list[float] = []
-    corners = ((x1 - r, y0 + r, -90), (x1 - r, y1 - r, 0), (x0 + r, y1 - r, 90), (x0 + r, y0 + r, 180))
-    for cx, cy, start in corners:
+    # Clockwise on screen (+y down), starting at the FL pod's join with the left side.
+    for index, name in enumerate(("FL", "FR", "BR", "BL")):
+        cx, cy = MODULE_CENTERS[name]
+        start = 180 - join + 90 * index
         for i in range(steps + 1):
-            a = math.radians(start + 90 * i / steps)
-            points += [cx + r * math.cos(a), cy + r * math.sin(a)]
+            a = math.radians(start + span * i / steps)
+            points += [cx + rim * math.cos(a), cy + rim * math.sin(a)]
+    return points
+
+
+def _wheel_outline(cx: float, cy: float, ux: float, uy: float, half_length: float, half_width: float,
+                   radius: float = 18, steps: int = 5) -> list[float]:
+    """A rounded-corner wheel centered on (cx, cy), its length along the unit vector (ux, uy)."""
+    px, py = -uy, ux
+    points: list[float] = []
+    for corner, (sa, sb) in enumerate(((1, 1), (-1, 1), (-1, -1), (1, -1))):
+        a0, b0 = sa * (half_length - radius), sb * (half_width - radius)
+        for i in range(steps + 1):
+            t = math.radians(90 * corner + 90 * i / steps)
+            a, b = a0 + radius * math.cos(t), b0 + radius * math.sin(t)
+            points += [cx + ux * a + px * b, cy + uy * a + py * b]
     return points
 
 
@@ -117,7 +142,7 @@ class RobotView(tk.Canvas):
         mono_font = (theme.MONO, max(8, round(13 * s)))
 
         # Chassis outline, module pods, gears.
-        self.create_polygon(self._points(*_rounded_square(30, 30, 970, 970, 210)), fill=theme.PAPER,
+        self.create_polygon(self._points(*_chassis_outline()), smooth=True, fill=theme.PAPER,
                             outline=theme.RULE, width=1.5)
         for name, (cx, cy) in MODULE_CENTERS.items():
             r = MODULE_POD_RADIUS
@@ -126,7 +151,7 @@ class RobotView(tk.Canvas):
             for radius, dash in ((r - 30, (3, 4)), (48, ())):
                 self.create_oval(*self._points(cx - radius, cy - radius, cx + radius, cy + radius),
                                  outline=theme.RULE if dash else theme.FAINT, dash=dash, width=1.2)
-            label_y = cy - r - 20 if cy < 500 else cy + r + 20
+            label_y = cy - r - 36 if cy < 500 else cy + r + 36  # just outside the chassis rim
             self.create_text(*self._to_screen(cx, label_y), text=f"{name} MODULE", fill=theme.MUTED,
                              font=small_font)
         for cx, cy in _ENCODER_GEARS:
@@ -231,11 +256,8 @@ class RobotView(tk.Canvas):
         live = self._modules.get(name)
         angle = live["angle"] if live and live["angle"] is not None else 0.0
         ux, uy = _heading_vector(angle)
-        px, py = -uy, ux
-        L, W = _WHEEL_HALF_LENGTH, _WHEEL_HALF_WIDTH
-        corners = (cx + ux * L + px * W, cy + uy * L + py * W, cx + ux * L - px * W, cy + uy * L - py * W,
-                   cx - ux * L - px * W, cy - uy * L - py * W, cx - ux * L + px * W, cy - uy * L + py * W)
-        self.coords(items["wheel"], *self._points(*corners))
+        outline = _wheel_outline(cx, cy, ux, uy, _WHEEL_HALF_LENGTH, _WHEEL_HALF_WIDTH)
+        self.coords(items["wheel"], *self._points(*outline))
 
         if not live:
             self.itemconfigure(items["wheel"], outline=theme.RULE)
