@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import queue
 import socket
 import threading
@@ -9,8 +10,8 @@ import time
 from typing import Any, Optional
 
 from common.protocol import (
-    MAX_DATAGRAM_BYTES, TCP_PORT, UDP_PORT, DriveCommand, LineBuffer, MsgType, decode, encode,
-    encode_line, open_udp_socket,
+    COMMAND_RATE_HZ, MAX_DATAGRAM_BYTES, TCP_PORT, UDP_PORT, DriveCommand, LineBuffer, MsgType, decode,
+    encode, encode_line, open_udp_socket,
 )
 
 # Messages the link itself generates for the UI (never sent over the network).
@@ -20,15 +21,24 @@ LINK_EVENT = "_link"
 class RobotLink:
     """UDP drive commands and telemetry, plus a TCP control connection that reconnects by itself.
 
-    All network waiting happens on a background thread. The UI thread calls
+    Drive commands go out from their own thread at a steady 50 Hz, so a busy
+    or briefly throttled window cannot starve the robot's watchdog. The UI
+    hands over the latest command with :meth:`set_command` every tick; if the
+    UI stops doing that for ``STALE_COMMAND_S`` (it has hung), sending stops
+    and the robot disables itself.
+
+    Network waiting happens on background threads. The UI thread calls
     :meth:`poll` every tick to collect received messages, so Tk widgets are
     only ever touched from the UI thread.
     """
 
     TELEMETRY_TIMEOUT_S = 0.5
     RECONNECT_DELAY_S = 1.5
+    COMMAND_INTERVAL_S = 1.0 / COMMAND_RATE_HZ
+    STALE_COMMAND_S = 1.0
 
-    def __init__(self, host: str) -> None:
+    def __init__(self, host: str, udp_port: int = UDP_PORT, tcp_port: int = TCP_PORT) -> None:
+        self._udp_port, self._tcp_port = udp_port, tcp_port
         self._udp = open_udp_socket(0)
         self._inbox: "queue.Queue[dict[str, Any]]" = queue.Queue()
         self._lock = threading.Lock()
@@ -39,8 +49,14 @@ class RobotLink:
         self._running = True
         self._last_telemetry_time = -1e9
         self.last_telemetry: Optional[dict[str, Any]] = None
+        self._command: Optional[DriveCommand] = None
+        self._command_time = -1e9
+        self._seq = 0
+        self._send_lock = threading.Lock()
         self._thread = threading.Thread(target=self._control_loop, name="robot-link", daemon=True)
         self._thread.start()
+        self._sender = threading.Thread(target=self._send_loop, name="robot-commands", daemon=True)
+        self._sender.start()
 
     # ---------------------------------------------------------------- status
 
@@ -78,14 +94,41 @@ class RobotLink:
                 except OSError:
                     pass
 
-    def send_command(self, command: DriveCommand) -> None:
+    def set_command(self, command: DriveCommand) -> None:
+        """The command to keep sending. Its ``seq`` is ignored; the link numbers what it sends."""
+        with self._send_lock:
+            self._command, self._command_time = command, time.monotonic()
+
+    def send_now(self, command: DriveCommand) -> None:
+        """Send one command immediately (used when closing, so "disabled" goes out before the link does)."""
+        self.set_command(command)
+        self._transmit(command)
+
+    def _transmit(self, command: DriveCommand) -> None:
         robot_ip = self._robot_ip
         if robot_ip is None:
             return
+        with self._send_lock:
+            self._seq += 1
+            numbered = dataclasses.replace(command, seq=self._seq)
         try:
-            self._udp.sendto(encode(command.to_message()), (robot_ip, UDP_PORT))
+            self._udp.sendto(encode(numbered.to_message()), (robot_ip, self._udp_port))
         except OSError:
             pass
+
+    def _send_loop(self) -> None:
+        next_send = time.monotonic()
+        while self._running:
+            with self._send_lock:
+                command, age = self._command, time.monotonic() - self._command_time
+            if command is not None and age < self.STALE_COMMAND_S:
+                self._transmit(command)
+            next_send += self.COMMAND_INTERVAL_S
+            delay = next_send - time.monotonic()
+            if delay > 0:
+                time.sleep(delay)
+            else:
+                next_send = time.monotonic()  # fell behind: do not burst to catch up
 
     def send_control(self, msg: dict[str, Any]) -> bool:
         """Send on the reliable channel. Returns False if not connected."""
@@ -134,6 +177,7 @@ class RobotLink:
                 except OSError:
                     pass
         self._thread.join(timeout=2.0)
+        self._sender.join(timeout=1.0)
         self._udp.close()
 
     # ------------------------------------------------------- background loop
@@ -147,7 +191,7 @@ class RobotLink:
             self._host_changed.clear()
             host = self._host
             try:
-                robot_ip = socket.getaddrinfo(host, TCP_PORT, socket.AF_INET, socket.SOCK_STREAM)[0][4][0]
+                robot_ip = socket.getaddrinfo(host, self._tcp_port, socket.AF_INET, socket.SOCK_STREAM)[0][4][0]
             except OSError:
                 problem = f"Cannot find '{host}' on the network"
                 if problem != last_problem:
@@ -158,9 +202,9 @@ class RobotLink:
             self._robot_ip = robot_ip
 
             try:
-                sock = socket.create_connection((robot_ip, TCP_PORT), timeout=2.0)
+                sock = socket.create_connection((robot_ip, self._tcp_port), timeout=2.0)
             except OSError:
-                problem = f"Robot at {robot_ip} is not answering on port {TCP_PORT}"
+                problem = f"Robot at {robot_ip} is not answering on port {self._tcp_port}"
                 if problem != last_problem:
                     self._event("error", problem)
                     last_problem = problem
@@ -172,7 +216,7 @@ class RobotLink:
             sock.settimeout(0.5)
             with self._lock:
                 self._tcp = sock
-            self._event("connected", f"Control link connected to {host} ({robot_ip}:{TCP_PORT})")
+            self._event("connected", f"Control link connected to {host} ({robot_ip}:{self._tcp_port})")
             self._read_until_closed(sock)
             with self._lock:
                 self._tcp = None

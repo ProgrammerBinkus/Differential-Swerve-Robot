@@ -3,6 +3,7 @@
 import sys
 from pathlib import Path
 
+from PyInstaller.utils.hooks import collect_all
 from PyInstaller.utils.win32.versioninfo import (
     FixedFileInfo, StringFileInfo, StringStruct, StringTable, VarFileInfo, VarStruct, VSVersionInfo,
 )
@@ -28,13 +29,24 @@ version_info = VSVersionInfo(
     ],
 )
 
+# The built-in simulator is the robot program, so the robot code and wpimath (with its native
+# libraries, loaded at run time where PyInstaller cannot see them) are bundled too.
+datas = [(str(ROOT / "station" / "assets"), "assets")]
+binaries, hiddenimports = [], ["robot.__main__", "robot.robot"]
+for package in ("wpimath", "wpiutil", "native"):
+    package_datas, package_binaries, package_imports = collect_all(package)
+    datas += package_datas
+    binaries += package_binaries
+    hiddenimports += package_imports
+
 a = Analysis(
     [str(ROOT / "packaging" / "station_entry.py")],
     pathex=[str(ROOT)],
-    datas=[(str(ROOT / "station" / "assets"), "assets")],
-    # The robot side and the dev tools never run on the laptop.
-    excludes=["robot", "tools", "tests", "wpimath", "wpiutil", "wpinet", "periphery", "numpy",
-              "PIL", "pytest", "pyflakes", "PyInstaller"],
+    datas=datas,
+    binaries=binaries,
+    hiddenimports=hiddenimports,
+    # Real-hardware access and the dev tools never run on the laptop.
+    excludes=["tools", "tests", "periphery", "numpy", "PIL", "pytest", "pyflakes", "PyInstaller"],
     noarchive=False,
 )
 pyz = PYZ(a.pure)

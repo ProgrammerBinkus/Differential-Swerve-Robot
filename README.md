@@ -49,15 +49,21 @@ python -m venv venv
 .\venv\Scripts\python -m pytest
 ```
 
-Then start the simulator and the driver station in two terminals, or use the **Simulator + driver
-station** launch configuration in VS Code:
+Then start the driver station and pick **Simulator** in the *Connection* switch at the top. It starts
+a built-in simulator by itself and stops it when you switch back to **Robot** or close the app:
 
 ```powershell
-.\venv\Scripts\python main.py robot --sim
-.\venv\Scripts\python main.py station --host localhost
+.\venv\Scripts\python main.py station
 ```
 
-`--host` only applies to that session; pressing Connect saves an address for next time.
+The built-in simulator keeps its own settings (zero offsets, mapping, tuning) in
+`%APPDATA%\Differential Swerve Driver Station\simulator_config.json`, separate from the real robot's.
+If a simulator is already running on the laptop, for example one started by hand with
+`main.py robot --sim` or the **Simulator + driver station** launch configuration, Simulator mode uses
+that one instead.
+
+`main.py station --host <address>` connects to a robot at that address for one session; pressing
+Connect saves an address for next time.
 
 The simulator models each module as an ideal differential, so wheel headings and motion arrows
 respond to the controller exactly as the real robot should once it is configured.
@@ -117,6 +123,19 @@ WantedBy=multi-user.target
 | + (Menu) | Return to Zero: steer every wheel back to 0° |
 | Space bar | Disable |
 
+**Keyboard control:** turn on *Keyboard control* in the Joysticks panel to drive without a controller.
+The keys light up on screen while you hold them. They go through the same sensitivity and deadzone
+sliders as the sticks, and if a controller is also connected, held keys take over from the sticks.
+
+| Keys | Action |
+|---|---|
+| W or ↑ / S or ↓ | Drive forward / back |
+| A / D | Strafe left / right |
+| J or ← / L or → | Turn left / right |
+
+Keys never drive while you're typing in a text box, such as the robot address or a number box. Click
+the drawing or press Esc to drive again. When the window loses focus, every key counts as released.
+
 Before the first run, line every wheel up straight by hand and press **−**. At every start-up after that,
 each wheel must be within ±90° of zero (the encoder is geared 2:1, so it cannot tell 0° from 180°).
 **Press + before switching the robot off** so the wheels are parked at zero. The program also returns
@@ -128,8 +147,9 @@ Safety rules:
   250 ms disables it (watchdog).
 - After start-up or a watchdog trip the robot stays disabled until you enable again from the station,
   even if the link comes back with the station still set to enabled.
-- The station can only enable with both the controller and the robot connected, and disables itself if
-  either drops out or the robot disables itself.
+- The station can only enable with the robot connected and an input available (a controller, or
+  keyboard control turned on). It disables itself if either goes away, if the robot disables itself, or
+  when you switch between Simulator and Robot.
 - Only one driver station drives at a time. A second one is ignored until the first has been silent
   for a second.
 - Swerve Set Zero and mapping changes only work while the robot is disabled. Tuning changes apply live.
@@ -171,7 +191,7 @@ instead. The output in `dist\`:
 
 | File | Use |
 |---|---|
-| `Differential Swerve Driver Station\DriverStation.exe` | The app. The whole folder is needed; it carries its own Python. |
+| `Differential Swerve Driver Station\DriverStation.exe` | The app (about 70 MB with the built-in simulator). The whole folder is needed; it carries its own Python. |
 | `DifferentialSwerveDriverStation-<version>-portable.zip` | That folder zipped. Unzip anywhere and run `DriverStation.exe`. |
 | `DifferentialSwerveDriverStation-<version>-setup.exe` | Installer with Start menu and desktop shortcuts and an uninstaller. Built only if [Inno Setup 6](https://jrsoftware.org/isinfo.php) is installed. |
 

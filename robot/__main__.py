@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from common.config import ConfigError
+from common.timing import request_steady_timers
 from robot.hardware import HardwareError
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -24,6 +25,7 @@ def main(argv: list[str] | None = None) -> int:
 
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s")
+    request_steady_timers()  # matters for the simulator on a Windows laptop; no-op on the Pi
 
     # Imported here so --help works on a machine without wpimath installed.
     from robot.robot import Robot

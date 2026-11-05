@@ -8,10 +8,11 @@ from tkinter import ttk
 from typing import Callable, Optional
 
 from station import theme
+from station.keyboard import KEYMAP, key_label
 from station.parts import WIRE_LAYERS, PartInfo
 from station.settings import StationSettings
 from station.views.robot_view import LAYER_COLORS, RobotView
-from station.widgets import Card, NumberRow, Terminal
+from station.widgets import Card, Keycap, NumberRow, Terminal, ToggleSwitch
 
 PANEL_TEXT_WIDTH = 270
 
@@ -23,6 +24,7 @@ class DriveTabActions:
     return_to_zero: Callable[[], None]
     select_part: Callable[[Optional[str]], None]
     settings_changed: Callable[[], None]
+    keyboard_toggled: Callable[[bool], None]
 
 
 class LayerChip(tk.Frame):
@@ -53,21 +55,25 @@ class DriveTab(ttk.Frame):
         super().__init__(parent, padding=(16, 14, 16, 16))
         self._settings = settings
         self._actions = actions
-        # Layout: part info | drawing | controls, with the terminal across the bottom.
-        # Layout: part info | drawing (full height) | controls, joysticks and terminal.
+        # Layout, all full height:
+        #   part info + robot terminal | drawing | robot control + joysticks and keyboard
         self.columnconfigure(1, weight=1)
         self.rowconfigure(0, weight=1)
 
-        self._build_part_panel(self).grid(row=0, column=0, sticky="nsew")
+        left = ttk.Frame(self)
+        left.grid(row=0, column=0, sticky="nsew")
+        left.columnconfigure(0, weight=1)
+        left.rowconfigure(1, weight=1)
+        self._build_part_panel(left).grid(row=0, column=0, sticky="nsew")
+        self._build_terminal(left).grid(row=1, column=0, sticky="nsew", pady=(14, 0))
+
         self._build_figure(self).grid(row=0, column=1, sticky="nsew", padx=14)
 
         side = ttk.Frame(self)
         side.grid(row=0, column=2, sticky="nsew")
         side.columnconfigure(0, weight=1)
-        side.rowconfigure(2, weight=1)
         self._build_controls(side).grid(row=0, column=0, sticky="ew")
-        self._build_sticks(side).grid(row=1, column=0, sticky="ew", pady=14)
-        self._build_terminal(side).grid(row=2, column=0, sticky="nsew")
+        self._build_sticks(side).grid(row=1, column=0, sticky="ew", pady=(14, 0))
 
     # ---------------------------------------------------------------- builders
 
@@ -99,7 +105,6 @@ class DriveTab(ttk.Frame):
 
     def _build_part_panel(self, parent: tk.Misc) -> Card:
         card = Card(parent, padding=16)
-        card.rowconfigure(6, weight=1)
         # A fixed-width strut keeps the drawing from shifting as the text changes.
         ttk.Frame(card, style="Plain.TFrame", width=PANEL_TEXT_WIDTH, height=1).grid(row=7, column=0)
         self._part_kind = ttk.Label(card, text="", style="CardLabel.TLabel")
@@ -167,7 +172,39 @@ class DriveTab(ttk.Frame):
                             on_change=lambda value, key=key: self._on_setting(key, value), label_width=16,
                             unit_width=2)
             row.grid(row=2 + index, column=0, sticky="ew", pady=4)
+        self._build_keyboard(card).grid(row=6, column=0, sticky="ew", pady=(10, 0))
         return card
+
+    def _build_keyboard(self, parent: tk.Misc) -> ttk.Frame:
+        frame = ttk.Frame(parent, style="Plain.TFrame")
+        frame.columnconfigure(0, weight=1)
+        tk.Frame(frame, height=1, bg=theme.RULE).grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        header = ttk.Frame(frame, style="Plain.TFrame")
+        header.grid(row=1, column=0, sticky="ew")
+        header.columnconfigure(1, weight=1)
+        self._keyboard_switch = ToggleSwitch(header, "Keyboard control", self._settings.keyboard_control,
+                                             self._actions.keyboard_toggled)
+        self._keyboard_switch.grid(row=0, column=0, sticky="w")
+        self._keyboard_hint = ttk.Label(header, text="", style="CardMuted.TLabel")
+        self._keyboard_hint.grid(row=0, column=1, sticky="e")
+
+        # The keymap, two actions per row: forward/back, strafe left/right, turn left/right.
+        self._keymap = ttk.Frame(frame, style="Plain.TFrame")
+        self._keycaps: dict[str, list[Keycap]] = {}
+        for index, (action, label, keys) in enumerate(KEYMAP):
+            row, column = divmod(index, 2)
+            cell = ttk.Frame(self._keymap, style="Plain.TFrame")
+            cell.grid(row=row, column=column, sticky="w", padx=(0, 18), pady=2)
+            caps = ttk.Frame(cell, style="Plain.TFrame", width=64)
+            caps.pack(side="left")
+            self._keycaps[action] = []
+            for key in keys:
+                cap = Keycap(caps, key_label(key))
+                cap.pack(side="left", padx=(0, 3))
+                self._keycaps[action].append(cap)
+            ttk.Label(cell, text=label, style="Card.TLabel").pack(side="left", padx=(4, 0))
+        self.show_keyboard(self._settings.keyboard_control, paused=False)
+        return frame
 
     def _build_terminal(self, parent: tk.Misc) -> Card:
         card = Card(parent, padding=(14, 10, 14, 14))
@@ -201,6 +238,21 @@ class DriveTab(ttk.Frame):
         self._mode_label.configure(text=mode)
         self._zero_button.state(["!disabled"] if robot_ready and not enabled else ["disabled"])
         self._home_button.state(["!disabled"] if enabled else ["disabled"])
+
+    def show_keyboard(self, on: bool, paused: bool) -> None:
+        """Show or hide the keymap, and say when keys are paused."""
+        self._keyboard_switch.set(on)
+        if on:
+            self._keymap.grid(row=2, column=0, sticky="w", pady=(8, 0))
+            self._keyboard_hint.configure(text="Paused while typing. Click the drawing to drive." if paused else "")
+        else:
+            self._keymap.grid_remove()
+            self._keyboard_hint.configure(text="")
+
+    def show_held_keys(self, actions: set[str]) -> None:
+        for action, caps in self._keycaps.items():
+            for cap in caps:
+                cap.set_active(action in actions)
 
     def show_inputs(self, vx: float, vy: float, omega: float) -> None:
         for key, value in (("forward", vx), ("left", vy), ("turn", omega)):

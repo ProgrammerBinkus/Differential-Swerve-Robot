@@ -201,6 +201,106 @@ class TitleBlock(tk.Frame):
         return value
 
 
+class ToggleSwitch(tk.Frame):
+    """An on/off switch with a label. Yellow when on, like the selection color."""
+
+    WIDTH, HEIGHT = 34, 18
+
+    def __init__(self, parent: tk.Misc, text: str, value: bool, on_toggle: Callable[[bool], None],
+                 background: str = theme.SHEET) -> None:
+        super().__init__(parent, bg=background, cursor="hand2")
+        self._value = value
+        self._on_toggle = on_toggle
+        self._enabled = True
+        self._track = tk.Canvas(self, width=self.WIDTH, height=self.HEIGHT, bg=background, highlightthickness=0)
+        self._track.pack(side="left", padx=(0, 10))
+        self._label = tk.Label(self, text=text, bg=background, fg=theme.INK, font=theme.FONT)
+        self._label.pack(side="left")
+        for widget in (self, self._track, self._label):
+            widget.bind("<Button-1>", self._clicked)
+        self._draw()
+
+    @property
+    def value(self) -> bool:
+        return self._value
+
+    def set(self, value: bool) -> None:
+        self._value = value
+        self._draw()
+
+    def _clicked(self, _event: tk.Event) -> None:
+        if self._enabled:
+            self._value = not self._value
+            self._draw()
+            self._on_toggle(self._value)
+
+    def _draw(self) -> None:
+        c, w, h = self._track, self.WIDTH, self.HEIGHT
+        c.delete("all")
+        fill = theme.HIGHLIGHT if self._value else theme.FIELD
+        outline = theme.HIGHLIGHT if self._value else theme.RULE
+        r = h / 2
+        c.create_oval(1, 1, h - 1, h - 1, fill=fill, outline=outline)
+        c.create_oval(w - h + 1, 1, w - 1, h - 1, fill=fill, outline=outline)
+        c.create_rectangle(r, 1, w - r, h - 1, fill=fill, outline="")
+        c.create_line(r, 1, w - r, 1, fill=outline)
+        c.create_line(r, h - 1, w - r, h - 1, fill=outline)
+        knob_x = w - r if self._value else r
+        c.create_oval(knob_x - r + 3, 4, knob_x + r - 3, h - 4,
+                      fill=theme.HIGHLIGHT_INK if self._value else theme.MUTED, outline="")
+
+
+class Segmented(tk.Frame):
+    """A row of mutually exclusive options; the selected one is yellow."""
+
+    def __init__(self, parent: tk.Misc, options: tuple[tuple[str, str], ...], value: str,
+                 on_select: Callable[[str], None]) -> None:
+        super().__init__(parent, bg=theme.RULE, padx=1, pady=1)
+        self._on_select = on_select
+        self._value = value
+        self._labels: dict[str, tk.Label] = {}
+        for index, (key, text) in enumerate(options):
+            label = tk.Label(self, text=text.upper(), font=theme.display_font(11), padx=10, pady=2, cursor="hand2")
+            label.grid(row=0, column=index, padx=(0 if index == 0 else 1, 0))
+            label.bind("<Button-1>", lambda _e, key=key: self._clicked(key))
+            label.bind("<Enter>", lambda _e, key=key: self._hover(key, True))
+            label.bind("<Leave>", lambda _e, key=key: self._hover(key, False))
+            self._labels[key] = label
+        self.set(value)
+
+    @property
+    def value(self) -> str:
+        return self._value
+
+    def set(self, value: str) -> None:
+        self._value = value
+        for key, label in self._labels.items():
+            selected = key == value
+            label.configure(bg=theme.HIGHLIGHT if selected else theme.FIELD,
+                            fg=theme.HIGHLIGHT_INK if selected else theme.MUTED)
+
+    def _hover(self, key: str, inside: bool) -> None:
+        if key != self._value:
+            self._labels[key].configure(fg=theme.INK if inside else theme.MUTED)
+
+    def _clicked(self, key: str) -> None:
+        if key != self._value:
+            self._on_select(key)  # the owner decides, then calls set()
+
+
+class Keycap(tk.Label):
+    """A key drawn like a keyboard key. Lights up while the key is held."""
+
+    def __init__(self, parent: tk.Misc, text: str) -> None:
+        super().__init__(parent, text=text, bg=theme.FIELD, fg=theme.INK, font=(theme.MONO, 9, "bold"),
+                         width=2, padx=4, pady=1, highlightthickness=1, highlightbackground=theme.RULE)
+
+    def set_active(self, active: bool) -> None:
+        self.configure(bg=theme.HIGHLIGHT if active else theme.FIELD,
+                       fg=theme.HIGHLIGHT_INK if active else theme.INK,
+                       highlightbackground=theme.HIGHLIGHT if active else theme.RULE)
+
+
 class StatusLight(tk.Frame):
     """A colored dot followed by a status text."""
 
@@ -232,7 +332,7 @@ class Terminal(ttk.Frame):
         self.rowconfigure(0, weight=1)
         self.columnconfigure(0, weight=1)
         self._text = tk.Text(self, bg=theme.FIELD, fg=theme.INK, insertbackground=theme.INK, font=theme.FONT_MONO,
-                             relief="flat", wrap="word", width=44, height=6, padx=10, pady=8, highlightthickness=1,
+                             relief="flat", wrap="word", width=38, height=6, padx=10, pady=8, highlightthickness=1,
                              highlightbackground=theme.RULE, highlightcolor=theme.RULE, state="disabled",
                              spacing1=1, spacing3=1)
         self._text.grid(row=0, column=0, sticky="nsew")

@@ -20,6 +20,8 @@ SETTINGS_PATH = DATA_DIR / "settings.json"
 LEGACY_SETTINGS_PATH = Path(__file__).resolve().parent.parent / "station_settings.json"
 
 
+CONNECTIONS = ("robot", "simulator")
+
 # Allowed range of each number, matching the sliders.
 RANGES = {
     "drive_sensitivity": (0.0, 100.0),
@@ -36,6 +38,8 @@ class StationSettings:
     drive_deadzone: float = 8.0       # percent of stick travel ignored around center
     turn_sensitivity: float = 60.0    # percent of max rotation at full right stick
     turn_deadzone: float = 8.0
+    keyboard_control: bool = False    # drive with W A S D / arrows and J L
+    connection: str = "robot"         # "robot" or "simulator" (the built-in one)
 
     @classmethod
     def load(cls, path: Path = SETTINGS_PATH) -> "StationSettings":
@@ -54,7 +58,13 @@ class StationSettings:
         for field in fields(cls):
             value = stored.get(field.name)
             default = getattr(settings, field.name)
-            if isinstance(default, str) and isinstance(value, str) and value.strip():
+            if isinstance(default, bool):
+                if isinstance(value, bool):
+                    setattr(settings, field.name, value)
+            elif field.name == "connection":
+                if value in CONNECTIONS:
+                    settings.connection = value
+            elif isinstance(default, str) and isinstance(value, str) and value.strip():
                 setattr(settings, field.name, value.strip())
             elif isinstance(default, float) and isinstance(value, (int, float)) and not isinstance(value, bool) \
                     and math.isfinite(value):

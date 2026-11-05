@@ -12,14 +12,16 @@ from common.config import MODULE_NAMES
 from common.protocol import COMMAND_RATE_HZ, DriveCommand, MsgType
 from station import APP_NAME, __version__, theme
 from station.gamepad import Gamepad, GamepadState
+from station.keyboard import KeyboardDrive, is_text_input
 from station.link import LINK_EVENT, RobotLink
 from station.parts import describe
 from station.settings import StationSettings
 from station.shaping import shape_inputs
+from station.simulator import LocalSimulator
 from station.views.drive_tab import DriveTab, DriveTabActions
 from station.views.mapping_tab import MappingTab
 from station.views.tuning_tab import TuningTab
-from station.widgets import StatusLight, TabBar, TitleBlock
+from station.widgets import Segmented, StatusLight, TabBar, TitleBlock
 from station.windows import resource_path
 
 log = logging.getLogger(__name__)
@@ -30,8 +32,11 @@ class StationApp:
 
     Safety rules on this side:
 
-    * The robot can only be enabled while the controller and the robot are
-      both connected, and it is disabled automatically if either drops out.
+    * The robot can only be enabled while the robot is connected and there is
+      an input (a controller, or keyboard control turned on). It is disabled
+      automatically if either goes away, or when the connection is switched.
+    * Keys typed into text boxes never drive, and keys count as released
+      whenever the window loses focus.
     * If the robot disables itself (its watchdog tripped), the station
       disables too, so the driver has to enable again on purpose.
     * The space bar disables from anywhere in the window.
@@ -41,12 +46,14 @@ class StationApp:
     UI_REFRESH_TICKS = 3          # redraw the UI at about 17 Hz
     TELEMETRY_PRINT_S = 0.5       # "Show telemetry" prints at 2 Hz
     ENABLE_GRACE_S = 1.0          # time the robot gets to report "enabled" after we enable
+    SIMULATOR_RETRY_S = 3.0       # how often Simulator mode re-checks for a simulator to talk to
 
     def __init__(self, root: tk.Tk, settings: StationSettings, host: Optional[str] = None) -> None:
-        """``host`` overrides the saved robot address for this session without saving it."""
+        """``host`` connects to that robot address for this session, without saving it."""
         self.root = root
         self.settings = settings
-        self._host = host or settings.robot_host
+        self._robot_host = host or settings.robot_host
+        self._connection = "robot" if host else settings.connection
         theme.apply_theme(root)
         root.title(APP_NAME)
         icon = resource_path("icon.ico")
@@ -55,12 +62,12 @@ class StationApp:
         root.geometry("1440x940")
         root.minsize(1200, 820)
 
-        self.link = RobotLink(self._host)
+        self.simulator = LocalSimulator()
+        self.link = RobotLink(self._current_host())
         self.gamepad = Gamepad()
 
         self._enabled = False
         self._enabled_at = 0.0
-        self._seq = 0
         self._zero_presses = 0
         self._home_presses = 0
         self._pad = GamepadState()
@@ -72,11 +79,21 @@ class StationApp:
         self._last_telemetry_print = 0.0
         self._was_connected = False
         self._tick_job: Optional[str] = None
+        self._keyboard_paused = False
+        self._simulator_checked_at = time.monotonic()
 
         self._build()
+        self.keyboard = KeyboardDrive(root, on_change=self.drive_tab.show_held_keys)
+        self.keyboard.enabled = settings.keyboard_control
         root.bind_all("<space>", lambda _event: self._disable("Space bar"))
+        # Clicking anywhere but a text box takes focus out of it, so the keys drive again.
+        root.bind_all("<Button-1>", self._focus_clicked_area, add="+")
+        root.bind_all("<Escape>", lambda _event: self.root.focus_set())
         root.protocol("WM_DELETE_WINDOW", self.close)
-        self.terminal.write("station", f"Driver station started. Looking for the robot at '{self._host}'.")
+        self.terminal.write("station", "Driver station started.")
+        if self._connection == "simulator":
+            self.terminal.write("station", self.simulator.start())
+        self.terminal.write("station", f"Looking for {self._target_name()}.")
         self._tick_job = root.after(self.TICK_MS, self._tick)
 
     # ------------------------------------------------------------------ layout
@@ -99,17 +116,22 @@ class StationApp:
 
         block = TitleBlock(header)
         block.grid(row=0, column=1, sticky="se")
+        self._connection_switch = Segmented(block.add_cell("Connection"),
+                                            (("simulator", "Simulator"), ("robot", "Robot")),
+                                            self._connection, self._set_connection)
+        self._connection_switch.pack(anchor="w", pady=(3, 0))
         self._robot_light = StatusLight(block.add_cell("Robot"))
         self._robot_light.pack(anchor="w", pady=(2, 0))
-        self._pad_light = StatusLight(block.add_cell("Controller"))
+        self._pad_light = StatusLight(block.add_cell("Input"))
         self._pad_light.pack(anchor="w", pady=(2, 0))
         address = block.add_cell("Robot address")
-        self._host_var = tk.StringVar(value=self._host)
-        host_entry = ttk.Entry(address, textvariable=self._host_var, width=20, font=theme.FONT_MONO)
-        host_entry.pack(side="left", pady=(2, 0))
-        host_entry.bind("<Return>", lambda _event: self._connect())
-        ttk.Button(address, text="Connect", command=self._connect, padding=(10, 3)).pack(
-            side="left", padx=(6, 0), pady=(2, 0))
+        self._host_var = tk.StringVar(value=self._robot_host)
+        self._host_entry = ttk.Entry(address, textvariable=self._host_var, width=20, font=theme.FONT_MONO)
+        self._host_entry.pack(side="left", pady=(2, 0))
+        self._host_entry.bind("<Return>", lambda _event: self._connect())
+        self._connect_button = ttk.Button(address, text="Connect", command=self._connect, padding=(10, 3))
+        self._connect_button.pack(side="left", padx=(6, 0), pady=(2, 0))
+        self._show_connection_widgets()
 
         self._tabs = TabBar(outer, on_select=self._show_page)
         self._tabs.grid(row=1, column=0, sticky="w", padx=20)
@@ -125,6 +147,7 @@ class StationApp:
             return_to_zero=self._return_to_zero,
             select_part=self._select_part,
             settings_changed=self._on_settings_changed,
+            keyboard_toggled=self._set_keyboard,
         ))
         self.mapping_tab = MappingTab(pages, apply=lambda update: self._send_config(update, "mapping"))
         self.tuning_tab = TuningTab(pages, apply=lambda update: self._send_config(update, "tuning"))
@@ -153,9 +176,21 @@ class StationApp:
         if pad.start and not self._previous_pad.start:
             self._return_to_zero()
 
-        if pad.connected:
+        keys = self.keyboard.poll()  # None while keyboard control is off
+        paused = self.keyboard.enabled and self.keyboard.paused
+        if paused != self._keyboard_paused:
+            self._keyboard_paused = paused
+            self.drive_tab.show_keyboard(self.keyboard.enabled, paused)
+        # Held keys win; otherwise the controller, if there is one.
+        if keys is not None and any(keys):
+            sticks: Optional[tuple[float, float, float]] = keys
+        elif pad.connected:
+            sticks = (pad.left_x, pad.left_y, pad.right_x)
+        else:
+            sticks = None
+        if sticks is not None:
             vx, vy, omega = shape_inputs(
-                pad.left_x, pad.left_y, pad.right_x,
+                *sticks,
                 drive_deadzone_pct=self.settings.drive_deadzone,
                 drive_sensitivity_pct=self.settings.drive_sensitivity,
                 turn_deadzone_pct=self.settings.turn_deadzone,
@@ -164,19 +199,19 @@ class StationApp:
         else:
             vx = vy = omega = 0.0
 
-        if self._enabled and not pad.connected:
+        # Read what has arrived first, so a late tick does not look like a lost robot.
+        for msg in self.link.poll():
+            self._handle_message(msg)
+
+        if self._enabled and not self._has_input:
             self._disable("Controller disconnected")
         if self._enabled and not self.link.telemetry_alive:
             self._disable("Lost contact with the robot")
 
-        self._seq += 1
-        self.link.send_command(DriveCommand(
-            seq=self._seq, enabled=self._enabled, vx=vx, vy=vy, omega=omega,
+        self.link.set_command(DriveCommand(
+            enabled=self._enabled, vx=vx, vy=vy, omega=omega,
             zero_presses=self._zero_presses, home_presses=self._home_presses,
         ))
-
-        for msg in self.link.poll():
-            self._handle_message(msg)
         if self._enabled and self.link.telemetry_alive and self._telemetry \
                 and self._telemetry.get("mode") == "disabled" \
                 and time.monotonic() - self._enabled_at > self.ENABLE_GRACE_S:
@@ -224,11 +259,16 @@ class StationApp:
 
     # ----------------------------------------------------------------- actions
 
+    @property
+    def _has_input(self) -> bool:
+        return self._pad.connected or self.keyboard.enabled
+
     def _toggle_enable(self) -> None:
         if self._enabled:
             self._disable("Disabled from the driver station")
-        elif not self._pad.connected:
-            self.terminal.write("station", "Connect a controller before enabling", "WARNING")
+        elif not self._has_input:
+            self.terminal.write("station", "Connect a controller or turn on keyboard control before enabling",
+                                "WARNING")
         elif not self.link.telemetry_alive:
             self.terminal.write("station", "The robot is not connected", "WARNING")
         else:
@@ -268,13 +308,71 @@ class StationApp:
 
     def _connect(self) -> None:
         host = self._host_var.get().strip()
-        if not host:
+        if not host or self._connection != "robot":
             return
-        self._host = host
+        self._robot_host = host
         self.settings.robot_host = host
         self.settings.save()
         self.link.set_host(host)
-        self.terminal.write("station", f"Looking for the robot at '{host}'")
+        self.terminal.write("station", f"Looking for {self._target_name()}.")
+
+    def _current_host(self) -> str:
+        return "localhost" if self._connection == "simulator" else self._robot_host
+
+    def _target_name(self) -> str:
+        return "the built-in simulator" if self._connection == "simulator" else f"the robot at '{self._robot_host}'"
+
+    def _set_connection(self, connection: str) -> None:
+        """Switch between the built-in simulator and the real robot."""
+        if connection == self._connection:
+            return
+        self._disable("Switched connection")
+        self._connection = connection
+        self.settings.connection = connection
+        self.settings.save()
+        self._connection_switch.set(connection)
+        self._show_connection_widgets()
+        self._telemetry = None
+        if connection == "simulator":
+            self.terminal.write("station", self.simulator.start())
+        else:
+            self.simulator.stop()
+        self.link.set_host(self._current_host())
+        self.terminal.write("station", f"Looking for {self._target_name()}.")
+
+    def _keep_simulator_available(self, alive: bool) -> None:
+        """In Simulator mode, start the built-in simulator whenever none is answering.
+
+        Covers a simulator started by hand that was closed, and the built-in
+        one stopping on an error (it is restarted after a pause).
+        """
+        now = time.monotonic()
+        if self._connection != "simulator" or alive or self.simulator.running \
+                or now - self._simulator_checked_at < self.SIMULATOR_RETRY_S:
+            return
+        self._simulator_checked_at = now
+        message = self.simulator.start()
+        if message.startswith("Starting"):
+            self.terminal.write("station", message)
+
+    def _show_connection_widgets(self) -> None:
+        state = ["!disabled"] if self._connection == "robot" else ["disabled"]
+        self._host_entry.state(state)
+        self._connect_button.state(state)
+
+    def _set_keyboard(self, on: bool) -> None:
+        self.keyboard.enabled = on
+        self.settings.keyboard_control = on
+        self.settings.save()
+        self._keyboard_paused = on and self.keyboard.paused
+        self.drive_tab.show_keyboard(on, self._keyboard_paused)
+        self.terminal.write("station", f"Keyboard control {'on' if on else 'off'}")
+        if not on and self._enabled and not self._pad.connected:
+            self._disable("Keyboard control turned off and no controller is connected")
+
+    def _focus_clicked_area(self, event: tk.Event) -> None:
+        if not is_text_input(event.widget):
+            self.root.focus_set()
 
     def _select_part(self, part_id: Optional[str]) -> None:
         self._selected_part = part_id
@@ -287,15 +385,20 @@ class StationApp:
     # ---------------------------------------------------------------------- UI
 
     def _refresh_ui(self, vx: float, vy: float, omega: float) -> None:
+        stopped = self.simulator.check()
+        if stopped:
+            self.terminal.write("station", stopped, "ERROR")
         alive = self.link.telemetry_alive
+        self._keep_simulator_available(alive)
         control = self.link.control_connected
         ip = self.link.robot_ip or "?"
         if alive and control:
-            self._robot_light.set("ok", f"{self.link.host} ({ip})")
+            self._robot_light.set("ok", "Simulator" if self._connection == "simulator" else f"{self.link.host} ({ip})")
         elif alive or control:
             self._robot_light.set("warn", "Telemetry only" if alive else "Control link only, no telemetry")
         else:
-            self._robot_light.set("error", f"Searching for {self.link.host}")
+            self._robot_light.set("error", "Starting simulator" if self._connection == "simulator"
+                                  else f"Searching for {self.link.host}")
         if alive and not self._was_connected:
             self.terminal.write("station", "Receiving telemetry from the robot")
         elif not alive and self._was_connected:
@@ -303,13 +406,18 @@ class StationApp:
         self._was_connected = alive
 
         pad = self._pad
-        self._pad_light.set("ok" if pad.connected else "error", pad.name if pad.connected else "Not detected")
+        if pad.connected:
+            self._pad_light.set("ok", pad.name)
+        elif self.keyboard.enabled:
+            self._pad_light.set("ok", "Keyboard")
+        else:
+            self._pad_light.set("error", "No controller")
 
         telemetry = self._telemetry if alive else None
         mode = "Robot not connected"
         if telemetry:
             mode = f"Robot mode: {telemetry['mode']}" + ("  ·  simulated hardware" if telemetry.get("simulated") else "")
-        self.drive_tab.show_state(self._enabled, alive and pad.connected, mode, alive)
+        self.drive_tab.show_state(self._enabled, alive and self._has_input, mode, alive)
         self.drive_tab.show_inputs(vx, vy, omega)
         self.drive_tab.robot_view.update_modules(telemetry["modules"] if telemetry else None)
         self._refresh_part_panel()
@@ -334,10 +442,10 @@ class StationApp:
             self._tick_job = None
         self._enabled = False
         for _ in range(3):  # make sure the robot hears "disabled" before the station goes quiet
-            self._seq += 1
-            self.link.send_command(DriveCommand(seq=self._seq, enabled=False,
-                                                zero_presses=self._zero_presses, home_presses=self._home_presses))
+            self.link.send_now(DriveCommand(enabled=False, zero_presses=self._zero_presses,
+                                            home_presses=self._home_presses))
         self.settings.save()
         self.link.close()
+        self.simulator.stop()
         self.gamepad.close()
         self.root.destroy()
