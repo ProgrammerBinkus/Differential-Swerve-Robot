@@ -7,13 +7,12 @@ top. Coordinates are in a 1000 x 1000 box around the chassis, +y down.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Optional
 
 from common.config import (
     HBRIDGE_CHANNELS, MODULE_NAMES, module_of_encoder, module_of_motor, motor_channel,
 )
-from station import theme
 
 MODULE_CENTERS = {"FL": (190, 190), "FR": (810, 190), "BL": (190, 810), "BR": (810, 810)}
 MODULE_POD_RADIUS = 152
@@ -35,28 +34,25 @@ class Part:
     title: str
     subtitle: str
     role: str = ""
-    color: str = field(default=theme.BORDER)
 
 
 def _hbridge(hb_id: str, x: float, y: float) -> Part:
     return Part(hb_id, "hbridge", hb_id, x, y, 60, 60, f"{hb_id} · AT8236 dual H-bridge",
                 f"Wiring sheet label {SHEET_LABELS[hb_id]} · 6.5–40 V, 3.5 A per channel, 4.2 A trip",
-                "VM/GND from its own power-hub pad pair at battery voltage; VCC from the Pi's 3.3 V.",
-                theme.CONTROL)
+                "VM/GND from its own power-hub pad pair at battery voltage; VCC from the Pi's 3.3 V.")
 
 
 def _motor(motor_id: str, x: float, y: float, vertical: bool) -> Part:
     w, h = (64, 90) if vertical else (90, 64)
     return Part(motor_id, "motor", motor_id, x, y, w, h, f"{motor_id} · 280 brushed motor",
-                "3–12 V, 0.38 A rated", "Shares driving and steering with the other motor in its module.",
-                theme.MOTOR)
+                "3–12 V, 0.38 A rated", "Shares driving and steering with the other motor in its module.")
 
 
 def _encoder(encoder_id: str, x: float, y: float) -> Part:
     return Part(encoder_id, "encoder", encoder_id, x, y, 38, 38, f"{encoder_id} · MT6701 magnetic encoder",
                 f"Wiring sheet label {SHEET_LABELS[encoder_id]} · I2C address 0x06",
                 "Geared 2:1 from the 90T wheel gear to the 45T encoder gear: one encoder turn is "
-                "180° of steering. Powered from 3.3 V only.", theme.SENSOR)
+                "180° of steering. Powered from 3.3 V only.")
 
 
 PARTS: tuple[Part, ...] = (
@@ -64,21 +60,23 @@ PARTS: tuple[Part, ...] = (
          "4 GB · Allwinner A733 · Wi-Fi 6 · rear of the chassis",
          "Runs the robot code at 200 Hz. Receives drive commands from this laptop over Wi-Fi, "
          "drives 8 motors through 8 hardware PWM + 8 direction pins and reads 4 encoders on 4 I2C buses. "
-         "Powered from the hub's 5 V through header pins 2/4 (5 V) and 6 (GND).", theme.LOGIC),
+         "Powered from the hub's 5 V through header pins 2/4 (5 V) and 6 (GND)."),
     Part("pdh", "power", "Power hub", 495, 330, 90, 90, "Matek Mini Power Hub",
          "9–26 V in · 4 × 20 A pad pairs · 5 V / 3 A regulator",
          "Each pad pair feeds one H-bridge at battery voltage; the 5 V regulator powers the Orange Pi. "
-         "The 12 V output is unused (it needs a 4–6S battery).", theme.POWER),
+         "The 12 V output is unused (it needs a 4–6S battery)."),
     Part("battery", "power", "3S LiPo", 677, 502, 205, 95, "Ovonic 3S LiPo",
          "11.1 V · 2200 mAh · 35C · XT60",
-         "12.6 V full, 11.1 V nominal. Stop driving near 9.9 V (3.3 V per cell).", theme.POWER),
+         "12.6 V full, 11.1 V nominal. Stop driving near 9.9 V (3.3 V per cell)."),
+    Part("xt60", "power", "XT60", 388, 500, 26, 48, "XT60 connector", "Battery lead",
+         "Mates the battery's lead to the power hub's pigtail."),
     Part("switch", "power", "SW", 388, 414, 30, 44, "30 A rocker switch",
          "Between the battery and the power hub",
          "Cuts all power. Press Return to Zero (+) before switching off, so the wheels are parked at zero "
-         "for the next start-up.", theme.POWER),
+         "for the next start-up."),
     Part("mpu", "imu", "IMU", 254, 500, 56, 90, "MPU-6050 (GY-521)", "I2C0 · address 0x68",
          "Shares I2C0 with encoder E1. Software support is a placeholder for now; it will enable "
-         "field-relative driving and return heading data to this laptop.", theme.SENSOR),
+         "field-relative driving and return heading data to this laptop."),
     _hbridge("HB1", 160, 500), _hbridge("HB2", 500, 155),
     _hbridge("HB3", 845, 500), _hbridge("HB4", 500, 860),
     _motor("M1", 160, 595, True), _motor("M2", 160, 405, True),
@@ -91,12 +89,60 @@ PARTS: tuple[Part, ...] = (
 PARTS_BY_ID = {part.id: part for part in PARTS}
 
 
+@dataclass(frozen=True)
+class Wire:
+    """One harness from wiring sheet E-01, routed in the same rotated coordinates as the parts."""
+
+    id: str
+    layer: str                       # battery, 5v, control, motor, i2c
+    ends: tuple[str, ...]            # parts it connects
+    points: tuple[tuple[float, float], ...]
+    branch: tuple[tuple[float, float], ...] = ()
+
+
+WIRE_LAYERS = (  # (layer, label) in drawing order, signals under power
+    ("i2c", "I2C sensors"),
+    ("control", "Motor control"),
+    ("motor", "Motor leads"),
+    ("5v", "5 V to Pi"),
+    ("battery", "Battery power"),
+)
+
+WIRES: tuple[Wire, ...] = (
+    Wire("W1", "battery", ("battery", "xt60"), ((575, 500), (401, 500))),
+    Wire("W2", "battery", ("xt60", "switch", "pdh"), ((388, 476), (388, 310), (450, 310))),
+    Wire("W3", "battery", ("pdh", "HB1"), ((450, 295), (220, 295), (220, 488), (190, 488))),
+    Wire("W4", "battery", ("pdh", "HB2"), ((490, 285), (490, 185))),
+    Wire("W5", "battery", ("pdh", "HB3"), ((540, 295), (800, 295), (800, 488), (815, 488))),
+    Wire("W6", "battery", ("pdh", "HB4"), ((450, 360), (365, 360), (365, 804), (486, 804), (486, 830))),
+    Wire("W7", "5v", ("pdh", "pi"), ((520, 375), (520, 560))),
+    Wire("W8", "control", ("pi", "HB1"), ((420, 600), (205, 600), (205, 512), (190, 512))),
+    Wire("W9", "control", ("pi", "HB2"), ((552, 560), (552, 210), (510, 210), (510, 185))),
+    Wire("W10", "control", ("pi", "HB3"), ((590, 700), (795, 700), (795, 512), (815, 512))),
+    Wire("W11", "control", ("pi", "HB4"), ((512, 785), (512, 830))),
+    Wire("W12", "i2c", ("pi", "E1", "mpu"), ((420, 760), (330, 760), (330, 694)),
+         branch=((330, 760), (254, 760), (254, 545))),
+    Wire("W13", "i2c", ("pi", "E2"), ((420, 570), (330, 570), (330, 344))),
+    Wire("W14", "i2c", ("pi", "E3"), ((563, 560), (563, 400), (680, 400), (680, 344))),
+    Wire("W15", "i2c", ("pi", "E4"), ((590, 640), (680, 640), (680, 656))),
+    Wire("M1", "motor", ("HB1", "M1"), ((160, 530), (160, 550))),
+    Wire("M2", "motor", ("HB1", "M2"), ((160, 470), (160, 450))),
+    Wire("M3", "motor", ("HB2", "M3"), ((470, 155), (450, 155))),
+    Wire("M4", "motor", ("HB2", "M4"), ((530, 155), (550, 155))),
+    Wire("M5", "motor", ("HB3", "M5"), ((845, 470), (845, 450))),
+    Wire("M6", "motor", ("HB3", "M6"), ((845, 530), (845, 550))),
+    Wire("M7", "motor", ("HB4", "M7"), ((530, 860), (550, 860))),
+    Wire("M8", "motor", ("HB4", "M8"), ((470, 860), (450, 860))),
+)
+
+
 @dataclass
 class PartInfo:
     title: str
     subtitle: str
     lines: list[str]   # facts, one per line
     note: str = ""     # what the part does, shown as a paragraph above the facts
+    kind: str = "part"  # "part" or "module"
 
 
 def _pin_text(config: dict[str, Any], hb_id: str, channel: str) -> str:
@@ -136,7 +182,8 @@ def describe(part_id: str, config: Optional[dict[str, Any]],
             ]
         else:
             lines.append("No telemetry from the robot.")
-        return PartInfo(f"{part_id} swerve module", "Differential: two motors drive and steer together", lines)
+        return PartInfo(f"{part_id} swerve module", "Differential: two motors drive and steer together", lines,
+                        kind="module")
 
     part = PARTS_BY_ID[part_id]
     lines: list[str] = []

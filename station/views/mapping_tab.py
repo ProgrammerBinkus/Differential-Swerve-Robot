@@ -73,12 +73,12 @@ class MappingTab(ttk.Frame):
 
     def _build_modules(self) -> Card:
         card = Card(self, "Modules")
-        table = ttk.Frame(card, style="Card.TFrame")
+        table = ttk.Frame(card, style="Plain.TFrame")
         table.grid(row=1, column=0, sticky="w")
         headers = ("Module", "Motor A", "Invert A", "Motor B", "Invert B", "Encoder", "Invert encoder",
                    "Zero offset")
         for column, text in enumerate(headers):
-            ttk.Label(table, text=text, style="CardMuted.TLabel").grid(row=0, column=column, padx=10, pady=(0, 4),
+            ttk.Label(table, text=text.upper(), style="CardLabel.TLabel").grid(row=0, column=column, padx=10, pady=(0, 4),
                                                                       sticky="w")
         for row, name in enumerate(MODULE_NAMES, start=1):
             v = {"motor_a": tk.StringVar(), "invert_a": tk.BooleanVar(), "motor_b": tk.StringVar(),
@@ -100,10 +100,10 @@ class MappingTab(ttk.Frame):
 
     def _build_motors(self) -> Card:
         card = Card(self, "Motors → H-bridge channels")
-        table = ttk.Frame(card, style="Card.TFrame")
+        table = ttk.Frame(card, style="Plain.TFrame")
         table.grid(row=1, column=0, sticky="w")
         for column, text in enumerate(("Motor", "H-bridge", "Channel")):
-            ttk.Label(table, text=text, style="CardMuted.TLabel").grid(row=0, column=column, padx=10, pady=(0, 4),
+            ttk.Label(table, text=text.upper(), style="CardLabel.TLabel").grid(row=0, column=column, padx=10, pady=(0, 4),
                                                                       sticky="w")
         for row, motor_id in enumerate(MOTOR_IDS, start=1):
             v = {"hbridge": tk.StringVar(), "channel": tk.StringVar()}
@@ -117,10 +117,10 @@ class MappingTab(ttk.Frame):
 
     def _build_encoders(self) -> Card:
         card = Card(self, "Encoders → I2C buses")
-        table = ttk.Frame(card, style="Card.TFrame")
+        table = ttk.Frame(card, style="Plain.TFrame")
         table.grid(row=1, column=0, sticky="w")
         for column, text in enumerate(("Encoder", "Linux bus", "Header pins")):
-            ttk.Label(table, text=text, style="CardMuted.TLabel").grid(row=0, column=column, padx=10, pady=(0, 4),
+            ttk.Label(table, text=text.upper(), style="CardLabel.TLabel").grid(row=0, column=column, padx=10, pady=(0, 4),
                                                                       sticky="w")
         self._pin_labels: dict[str, ttk.Label] = {}
         for row, encoder_id in enumerate(ENCODER_IDS, start=1):

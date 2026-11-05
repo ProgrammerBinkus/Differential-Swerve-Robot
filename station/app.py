@@ -19,7 +19,7 @@ from station.shaping import shape_inputs
 from station.views.drive_tab import DriveTab, DriveTabActions
 from station.views.mapping_tab import MappingTab
 from station.views.tuning_tab import TuningTab
-from station.widgets import StatusLight
+from station.widgets import StatusLight, TabBar, TitleBlock
 
 log = logging.getLogger(__name__)
 
@@ -77,44 +77,53 @@ class StationApp:
         outer = ttk.Frame(self.root)
         outer.pack(fill="both", expand=True)
         outer.columnconfigure(0, weight=1)
-        outer.rowconfigure(1, weight=1)
+        outer.rowconfigure(3, weight=1)
 
-        header = ttk.Frame(outer, style="Card.TFrame", padding=(16, 10))
+        # Header: drawing title on the left, title block on the right.
+        header = ttk.Frame(outer, padding=(20, 16, 20, 10))
         header.grid(row=0, column=0, sticky="ew")
-        header.columnconfigure(1, weight=1)
-        title = ttk.Frame(header, style="Card.TFrame")
-        title.grid(row=0, column=0, sticky="w")
-        ttk.Label(title, text="Differential Swerve", style="CardTitle.TLabel").grid(row=0, column=0, sticky="w")
-        ttk.Label(title, text="Driver station", style="CardMuted.TLabel").grid(row=1, column=0, sticky="w")
+        header.columnconfigure(0, weight=1)
+        title = ttk.Frame(header)
+        title.grid(row=0, column=0, sticky="sw")
+        ttk.Label(title, text="DIFFERENTIAL SWERVE DRIVEBASE  ·  CONTROL", style="Label.TLabel").pack(anchor="w")
+        ttk.Label(title, text="Driver Station", style="Title.TLabel").pack(anchor="w")
 
-        self._robot_light = StatusLight(header, "Robot")
-        self._robot_light.grid(row=0, column=2, padx=8)
-        self._pad_light = StatusLight(header, "Controller")
-        self._pad_light.grid(row=0, column=3, padx=8)
-
-        host = ttk.Frame(header, style="Card.TFrame")
-        host.grid(row=0, column=4, padx=(16, 0))
-        ttk.Label(host, text="Robot address", style="CardMuted.TLabel").grid(row=0, column=0, columnspan=2, sticky="w")
+        block = TitleBlock(header)
+        block.grid(row=0, column=1, sticky="se")
+        self._robot_light = StatusLight(block.add_cell("Robot"))
+        self._robot_light.pack(anchor="w", pady=(2, 0))
+        self._pad_light = StatusLight(block.add_cell("Controller"))
+        self._pad_light.pack(anchor="w", pady=(2, 0))
+        address = block.add_cell("Robot address")
         self._host_var = tk.StringVar(value=self.settings.robot_host)
-        host_entry = ttk.Entry(host, textvariable=self._host_var, width=20)
-        host_entry.grid(row=1, column=0)
+        host_entry = ttk.Entry(address, textvariable=self._host_var, width=20, font=theme.FONT_MONO)
+        host_entry.pack(side="left", pady=(2, 0))
         host_entry.bind("<Return>", lambda _event: self._connect())
-        ttk.Button(host, text="Connect", command=self._connect).grid(row=1, column=1, padx=(6, 0))
+        ttk.Button(address, text="Connect", command=self._connect, padding=(10, 3)).pack(
+            side="left", padx=(6, 0), pady=(2, 0))
 
-        notebook = ttk.Notebook(outer)
-        notebook.grid(row=1, column=0, sticky="nsew")
-        self.drive_tab = DriveTab(notebook, self.settings, DriveTabActions(
+        self._tabs = TabBar(outer, on_select=self._show_page)
+        self._tabs.grid(row=1, column=0, sticky="w", padx=20)
+        tk.Frame(outer, height=2, bg=theme.INK).grid(row=2, column=0, sticky="ew")
+
+        pages = ttk.Frame(outer)
+        pages.grid(row=3, column=0, sticky="nsew")
+        pages.columnconfigure(0, weight=1)
+        pages.rowconfigure(0, weight=1)
+        self.drive_tab = DriveTab(pages, self.settings, DriveTabActions(
             toggle_enable=self._toggle_enable,
             set_zero=self._set_zero,
             return_to_zero=self._return_to_zero,
             select_part=self._select_part,
             settings_changed=self._on_settings_changed,
         ))
-        self.mapping_tab = MappingTab(notebook, apply=lambda update: self._send_config(update, "mapping"))
-        self.tuning_tab = TuningTab(notebook, apply=lambda update: self._send_config(update, "tuning"))
-        notebook.add(self.drive_tab, text="Drive")
-        notebook.add(self.mapping_tab, text="Mapping")
-        notebook.add(self.tuning_tab, text="Tuning")
+        self.mapping_tab = MappingTab(pages, apply=lambda update: self._send_config(update, "mapping"))
+        self.tuning_tab = TuningTab(pages, apply=lambda update: self._send_config(update, "tuning"))
+        self._pages = {"drive": self.drive_tab, "mapping": self.mapping_tab, "tuning": self.tuning_tab}
+        for key, page in self._pages.items():
+            page.grid(row=0, column=0, sticky="nsew")
+            self._tabs.add(key, key)
+        self._show_page("drive")
         self.terminal = self.drive_tab.terminal
 
     # -------------------------------------------------------------------- tick
@@ -238,6 +247,10 @@ class StationApp:
 
     def _send_config(self, update: dict[str, Any], tag: str) -> bool:
         return self.link.send_control({"type": MsgType.SET_CONFIG, "tag": tag, "config": update})
+
+    def _show_page(self, key: str) -> None:
+        self._pages[key].tkraise()
+        self._tabs.select(key)
 
     def _connect(self) -> None:
         host = self._host_var.get().strip()
