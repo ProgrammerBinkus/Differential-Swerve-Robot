@@ -1,0 +1,2 @@
+# Windows laptop (driver station). tkinter ships with Python.
+pygame>=2.5

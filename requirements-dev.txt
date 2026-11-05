@@ -1,0 +1,5 @@
+# Everything, for running the simulator and tests on the laptop.
+-r requirements-robot.txt
+-r requirements-station.txt
+pytest>=8
+pyflakes>=3
