@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 import tkinter as tk
 from tkinter import ttk
 from typing import Any, Callable, Optional
@@ -12,14 +13,25 @@ from station.widgets import Card, NumberRow
 
 
 class TuningTab(ttk.Frame):
-    """Edits the ``tuning`` section. Changes apply live, even while enabled."""
+    """Edits the ``tuning`` section.
+
+    Every change is sent to the robot, which applies it live (even while
+    enabled) and saves it to its config file straight away. While a slider is
+    being dragged, sends are batched to at most one per ``SEND_INTERVAL_MS``;
+    the last value is always sent.
+    """
+
+    SEND_INTERVAL_MS = 100
 
     def __init__(self, parent: tk.Misc, apply: Callable[[dict[str, Any]], bool]) -> None:
         super().__init__(parent, padding=16)
         self._apply_callback = apply
         self._config: Optional[dict[str, Any]] = None
-        self._dirty = False
         self._loading = False
+        self._status_color = theme.MUTED
+        self._connected = False
+        self._send_job: Optional[str] = None
+        self._awaiting = 0   # changes sent but not yet confirmed
         self.columnconfigure(0, weight=3)
         self.columnconfigure(1, weight=2)
         self.rowconfigure(1, weight=1)  # keeps the right-hand cards stacked at the top
@@ -51,67 +63,70 @@ class TuningTab(ttk.Frame):
                  "2. Add a little kD to stop overshoot. Leave kI at 0 unless wheels stop short.",
                  "3. Measure top speed (full drive, time a known distance) and enter it as max wheel speed.",
                  "4. On the floor, lower the acceleration limit if the robot jerks.",
-                 "Changes apply live, even while enabled.")
+                 "Each change applies live, even while enabled, and is saved on the robot at once.")
         for index, text in enumerate(steps):
             ttk.Label(guide, text=text, style="Card.TLabel", wraplength=480, justify="left").grid(
                 row=1 + index, column=0, sticky="w", pady=2)
 
-        footer = ttk.Frame(self)
-        footer.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(12, 0))
-        footer.columnconfigure(0, weight=1)
-        self._status = ttk.Label(footer, text="Waiting for the robot's configuration...", style="Muted.TLabel")
-        self._status.grid(row=0, column=0, sticky="w")
-        self._revert_button = ttk.Button(footer, text="Revert", command=self._revert)
-        self._revert_button.grid(row=0, column=1, padx=6)
-        self._apply_button = ttk.Button(footer, text="Apply to robot", style="Accent.TButton", command=self._apply)
-        self._apply_button.grid(row=0, column=2)
-        self._can_apply = False
-        self._refresh_buttons()
+        self._status = ttk.Label(self, text="Waiting for the robot's configuration...", style="Muted.TLabel")
+        self._status.grid(row=2, column=0, columnspan=2, sticky="w", pady=(12, 0))
+        self._refresh_inputs()
 
     def load(self, config: dict[str, Any]) -> None:
+        """Show the robot's tuning, unless a change of ours is still on its way."""
         self._config = config
-        if self._dirty:
+        if self._send_job is not None or self._awaiting:
             return
         self._loading = True
         for key, row in self._rows.items():
             row.set(config["tuning"][key], notify=False)
         self._field_relative.set(config["field_relative"])
         self._loading = False
-        self._status.configure(text="Showing the robot's current tuning.", foreground=theme.MUTED)
-        self._refresh_buttons()
+        if self._status_color != theme.OK:  # keep "Saved at ..." visible
+            self._set_status("Showing the robot's saved tuning.", theme.MUTED)
+        self._refresh_inputs()
 
-    def set_can_apply(self, can_apply: bool) -> None:
-        self._can_apply = can_apply
-        self._refresh_buttons()
+    def set_connected(self, connected: bool) -> None:
+        if connected == self._connected:
+            return
+        self._connected = connected
+        self._refresh_inputs()
+        if not connected:
+            self._set_status("Not connected to the robot: tuning can't be changed.", theme.MUTED)
 
     def show_result(self, ok: bool, message: str, errors: list[str]) -> None:
+        self._awaiting = max(0, self._awaiting - 1)
         if ok:
-            self._dirty = False
-            self._status.configure(text=message, foreground=theme.OK)
-        else:
-            self._status.configure(text="  ".join([message, *errors]), foreground=theme.ERROR)
-        self._refresh_buttons()
-
-    def _on_edit(self) -> None:
-        if self._loading:
+            if not self._awaiting and self._send_job is None:
+                self._set_status(f"Saved on the robot at {time.strftime('%H:%M:%S')}.", theme.OK)
             return
-        self._dirty = True
-        self._status.configure(text="Unsaved changes.", foreground=theme.WARN)
-        self._refresh_buttons()
-
-    def _refresh_buttons(self) -> None:
-        ready = self._dirty and self._config is not None
-        self._revert_button.state(["!disabled"] if ready else ["disabled"])
-        self._apply_button.state(["!disabled"] if ready and self._can_apply else ["disabled"])
-
-    def _revert(self) -> None:
-        self._dirty = False
+        self._set_status("  ".join([f"Not saved: {message}", *errors]), theme.ERROR)
+        self._awaiting = 0
         if self._config is not None:
             self.load(self._config)
 
-    def _apply(self) -> None:
+    def _set_status(self, text: str, color: str) -> None:
+        self._status_color = color
+        self._status.configure(text=text, foreground=color)
+
+    def _refresh_inputs(self) -> None:
+        editable = self._connected and self._config is not None
+        for row in self._rows.values():
+            row.set_enabled(editable)
+
+    def _on_edit(self) -> None:
+        if self._loading or self._config is None:
+            return
+        self._set_status("Saving...", theme.MUTED)
+        if self._send_job is None:
+            self._send_job = self.after(self.SEND_INTERVAL_MS, self._send)
+
+    def _send(self) -> None:
+        self._send_job = None
         update = {"tuning": {key: row.get() for key, row in self._rows.items()}}
         if self._apply_callback(update):
-            self._status.configure(text="Sent to the robot...", foreground=theme.MUTED)
+            self._awaiting += 1
         else:
-            self.show_result(False, "Not connected to the robot.", [])
+            self._set_status("Not saved: not connected to the robot.", theme.ERROR)
+            if self._config is not None:
+                self.load(self._config)

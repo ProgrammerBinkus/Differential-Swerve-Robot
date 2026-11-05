@@ -11,3 +11,8 @@ venv/
 robot_config.json
 robot_config.json.bak
 station_settings.json
+
+# Windows app build output (packaging\build.ps1)
+build/
+dist/
+robot_config.json.tmp

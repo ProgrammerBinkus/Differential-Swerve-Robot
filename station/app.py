@@ -10,7 +10,7 @@ from typing import Any, Optional
 
 from common.config import MODULE_NAMES
 from common.protocol import COMMAND_RATE_HZ, DriveCommand, MsgType
-from station import theme
+from station import APP_NAME, __version__, theme
 from station.gamepad import Gamepad, GamepadState
 from station.link import LINK_EVENT, RobotLink
 from station.parts import describe
@@ -20,6 +20,7 @@ from station.views.drive_tab import DriveTab, DriveTabActions
 from station.views.mapping_tab import MappingTab
 from station.views.tuning_tab import TuningTab
 from station.widgets import StatusLight, TabBar, TitleBlock
+from station.windows import resource_path
 
 log = logging.getLogger(__name__)
 
@@ -39,7 +40,6 @@ class StationApp:
     TICK_MS = 1000 // COMMAND_RATE_HZ
     UI_REFRESH_TICKS = 3          # redraw the UI at about 17 Hz
     TELEMETRY_PRINT_S = 0.5       # "Show telemetry" prints at 2 Hz
-    SETTINGS_SAVE_DELAY_S = 1.0   # save slider changes once they settle
     ENABLE_GRACE_S = 1.0          # time the robot gets to report "enabled" after we enable
 
     def __init__(self, root: tk.Tk, settings: StationSettings, host: Optional[str] = None) -> None:
@@ -48,7 +48,10 @@ class StationApp:
         self.settings = settings
         self._host = host or settings.robot_host
         theme.apply_theme(root)
-        root.title("Differential Swerve Driver Station")
+        root.title(APP_NAME)
+        icon = resource_path("icon.ico")
+        if icon.exists():
+            root.iconbitmap(default=str(icon))
         root.geometry("1440x940")
         root.minsize(1200, 820)
 
@@ -67,7 +70,6 @@ class StationApp:
         self._selected_part: Optional[str] = None
         self._ticks = 0
         self._last_telemetry_print = 0.0
-        self._settings_changed_at: Optional[float] = None
         self._was_connected = False
         self._tick_job: Optional[str] = None
 
@@ -91,7 +93,8 @@ class StationApp:
         header.columnconfigure(0, weight=1)
         title = ttk.Frame(header)
         title.grid(row=0, column=0, sticky="sw")
-        ttk.Label(title, text="DIFFERENTIAL SWERVE DRIVEBASE  ·  CONTROL", style="Label.TLabel").pack(anchor="w")
+        ttk.Label(title, text=f"DIFFERENTIAL SWERVE DRIVEBASE  ·  CONTROL  ·  V{__version__}",
+                  style="Label.TLabel").pack(anchor="w")
         ttk.Label(title, text="Driver Station", style="Title.TLabel").pack(anchor="w")
 
         block = TitleBlock(header)
@@ -182,10 +185,6 @@ class StationApp:
         self._ticks += 1
         if self._ticks % self.UI_REFRESH_TICKS == 0:
             self._refresh_ui(vx, vy, omega)
-        if self._settings_changed_at is not None and \
-                time.monotonic() - self._settings_changed_at > self.SETTINGS_SAVE_DELAY_S:
-            self.settings.save()
-            self._settings_changed_at = None
 
     # ---------------------------------------------------------------- messages
 
@@ -283,7 +282,7 @@ class StationApp:
         self._refresh_part_panel()
 
     def _on_settings_changed(self) -> None:
-        self._settings_changed_at = time.monotonic()
+        self.settings.save()
 
     # ---------------------------------------------------------------------- UI
 
@@ -318,7 +317,7 @@ class StationApp:
         robot_disabled = bool(telemetry) and telemetry["mode"] == "disabled" and not self._enabled
         reason = "" if robot_disabled else "Disable the robot to apply mapping changes."
         self.mapping_tab.set_can_apply(control and robot_disabled, reason)
-        self.tuning_tab.set_can_apply(control)
+        self.tuning_tab.set_connected(control)
 
     def _refresh_part_panel(self) -> None:
         if self._selected_part is None:

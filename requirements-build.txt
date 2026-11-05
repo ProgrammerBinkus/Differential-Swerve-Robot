@@ -1,0 +1,5 @@
+﻿# Building the Windows app (packaging\build.ps1).
+-r requirements-station.txt
+pyinstaller>=6.10
+pillow>=10       # only for packaging\make_icon.py
+pytest>=8

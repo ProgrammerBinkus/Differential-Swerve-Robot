@@ -5,12 +5,19 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
+from station import APP_NAME
+
 log = logging.getLogger(__name__)
 
-SETTINGS_PATH = Path(__file__).resolve().parent.parent / "station_settings.json"
+# Per-user and writable even when the app is installed under Program Files.
+DATA_DIR = Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming") / APP_NAME
+SETTINGS_PATH = DATA_DIR / "settings.json"
+# Where versions before the Windows app kept them; read once if nothing is saved yet.
+LEGACY_SETTINGS_PATH = Path(__file__).resolve().parent.parent / "station_settings.json"
 
 
 # Allowed range of each number, matching the sliders.
@@ -32,6 +39,8 @@ class StationSettings:
 
     @classmethod
     def load(cls, path: Path = SETTINGS_PATH) -> "StationSettings":
+        if path == SETTINGS_PATH and not path.exists() and LEGACY_SETTINGS_PATH.exists():
+            path = LEGACY_SETTINGS_PATH
         try:
             stored = json.loads(path.read_text(encoding="utf-8"))
         except FileNotFoundError:
@@ -54,7 +63,11 @@ class StationSettings:
         return settings
 
     def save(self, path: Path = SETTINGS_PATH) -> None:
+        """Write the settings now. Atomic: a crash mid-save keeps the previous file."""
         try:
-            path.write_text(json.dumps(asdict(self), indent=2) + "\n", encoding="utf-8")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = path.with_suffix(path.suffix + ".tmp")
+            temporary.write_text(json.dumps(asdict(self), indent=2) + "\n", encoding="utf-8")
+            os.replace(temporary, path)
         except OSError as exc:
             log.warning("Could not save %s: %s", path, exc)

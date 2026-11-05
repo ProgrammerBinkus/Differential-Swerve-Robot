@@ -18,6 +18,8 @@ station/                runs on the laptop
   views/                Drive, Mapping and Tuning tabs, top-down robot view
   gamepad.py            Xbox controller (pygame)
   link.py               network link to the robot
+  windows.py            logging, crash reports, single instance, taskbar identity
+packaging/              Windows app build (PyInstaller spec, build script, installer script, icon)
 tools/                  bring-up tools for the Pi
 tests/                  pytest suite (runs on the laptop, no hardware)
 ```
@@ -143,6 +145,50 @@ Safety rules:
 - **Mapping:** which motors, encoder and invert flags each module uses, which H-bridge channel each
   motor is plugged into, and which I2C bus each encoder is on.
 - **Tuning:** steering PID, steer output limit, max wheel speed, acceleration limit and more.
+
+**Everything saves as you change it**, with no Apply button:
+
+- Mapping and Tuning changes go straight to the robot, which applies them and writes
+  `robot_config.json`. The status line under each tab confirms "Saved on the robot". Tuning applies
+  live, even while driving. Mapping only works while the robot is disabled.
+- A mapping edit that isn't valid yet, such as a motor used twice halfway through swapping two, waits
+  until it is. I2C bus paths save when you press Enter or click away.
+- If the robot rejects a change, the tab goes back to what the robot has saved.
+- Joystick sensitivity and deadzone save on the laptop immediately, in
+  `%APPDATA%\Differential Swerve Driver Station\settings.json`.
+
+## Windows app
+
+Build the driver station as a normal Windows program:
+
+```powershell
+.\venv\Scripts\pip install -r requirements-build.txt
+powershell -ExecutionPolicy Bypass -File packaging\build.ps1
+```
+
+The build runs the tests first. In VS Code you can use **Terminal → Run Task → Build Windows app**
+instead. The output in `dist\`:
+
+| File | Use |
+|---|---|
+| `Differential Swerve Driver Station\DriverStation.exe` | The app. The whole folder is needed; it carries its own Python. |
+| `DifferentialSwerveDriverStation-<version>-portable.zip` | That folder zipped. Unzip anywhere and run `DriverStation.exe`. |
+| `DifferentialSwerveDriverStation-<version>-setup.exe` | Installer with Start menu and desktop shortcuts and an uninstaller. Built only if [Inno Setup 6](https://jrsoftware.org/isinfo.php) is installed. |
+
+Notes:
+
+- **Windows Firewall:** the first time the app runs, Windows asks whether it may use the network.
+  Allow it on private networks, or the robot's telemetry can't reach the laptop. Installing "for all
+  users" with the installer adds the rule for you.
+- **SmartScreen:** the app isn't code-signed, so Windows may warn on first launch. Click
+  *More info → Run anyway*.
+- **One copy at a time:** opening it again brings the running window forward, since the robot only
+  obeys one station.
+- **Logs** are in `%LOCALAPPDATA%\Differential Swerve Driver Station\logs\station.log`. If the app
+  ever has to close on an error, it says so and points there.
+- **Version:** set `__version__` in `station/__init__.py` before building a release. It appears in the
+  window header, the file's properties and the installer name.
+- The app accepts `--host <address>` for a one-off connection, the same as `main.py station`.
 
 ## How the control loop works
 
