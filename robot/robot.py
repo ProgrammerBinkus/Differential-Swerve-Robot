@@ -39,6 +39,8 @@ class Robot:
       station has sent "disabled" at least once, so a station that was left
       enabled cannot start the robot moving the moment the link comes back.
     * Mapping changes and Swerve Set Zero are only accepted while disabled.
+    * Field-relative drive needs a calibrated IMU. Without one (missing,
+      calibrating, or failed) the robot drives robot-relative and says so.
     * On shutdown the wheels are steered back to zero, as the BOM requires.
     """
 
@@ -68,12 +70,13 @@ class Robot:
         accel = self.config["tuning"]["accel_limit"]
         self._limiters = [RateLimiter(accel) for _ in range(3)]  # vx, vy, omega
 
-        if self.config["field_relative"] and self._hardware.imu.yaw_deg is None:
-            log.warning("field_relative is on but the MPU-6050 is not implemented; driving robot-relative")
+        if self.config["field_relative"] and self._hardware.imu.status == "absent":
+            log.warning("Field-relative drive is on but no IMU was found; driving robot-relative")
 
         self._stop = threading.Event()
         self._mode = Mode.DISABLED
         self._needs_disabled_command = True  # see the class docstring
+        self._field_heading_ok = True         # for logging changes in field-relative availability
         self._command = DriveCommand()
         self._command_time = -math.inf
         self._zero_presses: int | None = None
@@ -139,8 +142,21 @@ class Robot:
         else:
             vx, vy, omega = (limiter.calculate(target, dt) for limiter, target in
                              zip(self._limiters, (self._command.vx, self._command.vy, self._command.omega)))
-            heading = self._hardware.imu.yaw_deg if self.config["field_relative"] else None
-            self._drivetrain.drive(vx, vy, omega, heading)
+            self._drivetrain.drive(vx, vy, omega, self._field_heading())
+
+    def _field_heading(self) -> float | None:
+        """The heading to drive field-relative with, or None for robot-relative."""
+        if not self.config["field_relative"]:
+            return None
+        heading = self._hardware.imu.heading_deg
+        if (heading is not None) != self._field_heading_ok:
+            self._field_heading_ok = heading is not None
+            if heading is None:
+                log.warning("Field-relative drive unavailable (IMU %s); driving robot-relative",
+                            self._hardware.imu.status)
+            else:
+                log.info("Field-relative drive active")
+        return heading
 
     def _update_mode(self, want_enabled: bool, fresh: bool) -> None:
         if not want_enabled:
@@ -219,6 +235,8 @@ class Robot:
                 event.client.send(self._config_message())
             elif kind == MsgType.SET_CONFIG:
                 event.client.send(self._apply_config_update(event.msg))
+            elif kind == MsgType.SET_FIELD_FORWARD:
+                event.client.send(self._set_field_forward(event.msg))
             else:
                 log.debug("Ignoring control message of type %r", kind)
 
@@ -255,6 +273,8 @@ class Robot:
             log.warning("Module mapping changed; steering angles re-read from the encoders")
         else:
             self._drivetrain.apply_tuning(merged["tuning"])
+            if self._hardware.simulated:
+                self._hardware.reconfigure(merged)  # the simulator's wheel speed follows max_speed_mps
         for limiter in self._limiters:
             limiter.rate_per_s = merged["tuning"]["accel_limit"]
 
@@ -263,6 +283,21 @@ class Robot:
         self._control.broadcast(self._config_message())
         log.info("Configuration updated (%s)", ", ".join(update))
         return result(True, "Saved on the robot")
+
+    def _set_field_forward(self, msg: dict[str, Any]) -> dict[str, Any]:
+        """Make the current heading equal ``facing_deg`` (0 = facing away from the driver station)."""
+        def result(ok: bool, message: str) -> dict[str, Any]:
+            return {"type": MsgType.RESULT, "request": MsgType.SET_FIELD_FORWARD, "tag": msg.get("tag"),
+                    "ok": ok, "message": message, "errors": []}
+
+        facing = msg.get("facing_deg")
+        if not isinstance(facing, (int, float)) or isinstance(facing, bool) or not math.isfinite(facing):
+            return result(False, "facing_deg must be a number of degrees")
+        imu = self._hardware.imu
+        if not imu.set_field_forward(float(facing)):
+            return result(False, f"Can't set field forward: IMU {imu.status}")
+        log.info("Field forward set: the robot faces %+.0f° from away-from-the-driver", facing)
+        return result(True, "Field forward set")
 
     def _config_message(self) -> dict[str, Any]:
         return {"type": MsgType.CONFIG, "config": self.config}
@@ -288,9 +323,10 @@ class Robot:
             "loop_ms": round(self._loop_ms, 3),
             "loop_ms_max": round(self._loop_ms_max, 3),
             "field_relative": self.config["field_relative"],
+            "field_relative_active": self.config["field_relative"] and self._hardware.imu.heading_deg is not None,
             "simulated": self._hardware.simulated,
             "modules": self._drivetrain.telemetry(),
-            "imu": {"yaw": self._hardware.imu.yaw_deg},
+            "imu": self._hardware.imu.telemetry(),
         })
         self._loop_ms_max = 0.0
 

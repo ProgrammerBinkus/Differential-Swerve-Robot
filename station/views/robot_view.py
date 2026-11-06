@@ -24,6 +24,7 @@ _WHEEL_HALF_WIDTH = 32
 _ARROW_MIN = 45
 _ARROW_SPAN = 150
 _ENCODER_GEARS = ((330, 325), (680, 325), (330, 675), (680, 675))
+_DIAL_CENTER, _DIAL_RADIUS = (958.0, -28.0), 40.0   # field heading dial, top right, outside the chassis
 
 LAYER_COLORS = {
     "battery": theme.WIRE_BATTERY, "5v": theme.WIRE_5V, "control": theme.WIRE_CONTROL,
@@ -88,6 +89,8 @@ class RobotView(tk.Canvas):
         self._pods: dict[str, int] = {}
         self._wires: dict[str, list[tuple[int, float]]] = {}     # wire id -> [(core item, width)]
         self._wheels: dict[str, dict[str, int]] = {}
+        self._dial: dict[str, int] = {}
+        self._heading: Optional[float] = None
         self.bind("<Configure>", lambda _e: self._draw())
         self.tag_bind("pickable", "<Button-1>", self._on_click)
         self.bind("<Button-1>", self._on_background_click, add="+")
@@ -101,6 +104,29 @@ class RobotView(tk.Canvas):
         self._modules = modules or {}
         for name in MODULE_NAMES:
             self._draw_wheel(name)
+
+    def update_heading(self, heading_deg: Optional[float]) -> None:
+        """Turn the field dial: its arrow points "away from the driver station" as seen from the robot."""
+        self._heading = heading_deg
+        dial = self._dial
+        if not dial:
+            return
+        cx, cy = _DIAL_CENTER
+        if heading_deg is None:
+            for key in ("arrow", "you"):
+                self.itemconfigure(dial[key], state="hidden")
+            self.itemconfigure(dial["text"], text="NO HEADING")
+            return
+        # Field forward in the robot frame is the robot's heading turned back by itself.
+        ux, uy = _heading_vector(-heading_deg)
+        r = _DIAL_RADIUS - 8
+        self.coords(dial["arrow"], *self._points(cx - ux * r, cy - uy * r, cx + ux * r, cy + uy * r))
+        you_x, you_y = self._to_screen(cx - ux * r, cy - uy * r)
+        dot = 4.5 * self._scale * 1.6
+        self.coords(dial["you"], you_x - dot, you_y - dot, you_x + dot, you_y + dot)
+        for key in ("arrow", "you"):
+            self.itemconfigure(dial[key], state="normal")
+        self.itemconfigure(dial["text"], text=f"FIELD {round(heading_deg):+d}°")
 
     def select(self, part_id: Optional[str]) -> None:
         self._selected = part_id
@@ -135,6 +161,7 @@ class RobotView(tk.Canvas):
         self._pods.clear()
         self._wires.clear()
         self._wheels.clear()
+        self._dial.clear()
         s = self._scale
         size = max(9, round(17 * s))
         title_font = (theme.DISPLAY, size)
@@ -210,9 +237,21 @@ class RobotView(tk.Canvas):
                                          text="", fill=theme.MUTED, font=mono_font),
             }
 
+        # Field heading dial: arrow = away from the driver station, dot = the driver station's side.
+        cx, cy = _DIAL_CENTER
+        r = _DIAL_RADIUS
+        self.create_oval(*self._points(cx - r, cy - r, cx + r, cy + r), fill=theme.PAPER, outline=theme.RULE, width=1.5)
+        self._dial = {
+            "arrow": self.create_line(0, 0, 0, 0, fill=theme.HIGHLIGHT, width=max(2, 4 * s), arrow="last",
+                                      arrowshape=(9, 11, 4), capstyle="round"),
+            "you": self.create_oval(0, 0, 0, 0, fill=theme.INK, outline=""),
+            "text": self.create_text(*self._to_screen(cx, cy + r + 16), text="", fill=theme.MUTED, font=small_font),
+        }
+
         for layer in self._hidden_layers:
             self.itemconfigure(f"layer-{layer}", state="hidden")
         self.update_modules(self._modules)
+        self.update_heading(self._heading)
         self._apply_selection()
 
     def _apply_selection(self) -> None:

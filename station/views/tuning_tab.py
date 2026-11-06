@@ -47,23 +47,14 @@ class TuningTab(ttk.Frame):
                                                                            sticky="w", padx=(2, 0))
             self._rows[field.key] = row
 
-        options = Card(self, "Options")
-        options.grid(row=0, column=1, sticky="new")
-        self._field_relative = tk.BooleanVar(value=False)
-        check = ttk.Checkbutton(options, text="Field-relative driving", variable=self._field_relative,
-                                style="Card.TCheckbutton")
-        check.grid(row=1, column=0, sticky="w")
-        check.state(["disabled"])
-        ttk.Label(options, text="Needs the MPU-6050, which is not implemented yet.",
-                  style="CardMuted.TLabel").grid(row=2, column=0, sticky="w")
-
         guide = Card(self, "Tuning order")
-        guide.grid(row=1, column=1, sticky="new", pady=(12, 0))
+        guide.grid(row=0, column=1, sticky="new")
         steps = ("1. Wheels off the ground. Raise kP until a wheel snaps to new angles; back off if it oscillates.",
                  "2. Add a little kD to stop overshoot. Leave kI at 0 unless wheels stop short.",
                  "3. Measure top speed (full drive, time a known distance) and enter it as max wheel speed.",
                  "4. On the floor, lower the acceleration limit if the robot jerks.",
-                 "Each change applies live, even while enabled, and is saved on the robot at once.")
+                 "Each change applies live, even while enabled, and is saved on the robot at once.",
+                 "Field-relative drive and the heading reference are on the Drive tab.")
         for index, text in enumerate(steps):
             ttk.Label(guide, text=text, style="Card.TLabel", wraplength=480, justify="left").grid(
                 row=1 + index, column=0, sticky="w", pady=2)
@@ -80,7 +71,6 @@ class TuningTab(ttk.Frame):
         self._loading = True
         for key, row in self._rows.items():
             row.set(config["tuning"][key], notify=False)
-        self._field_relative.set(config["field_relative"])
         self._loading = False
         if self._status_color != theme.OK:  # keep "Saved at ..." visible
             self._set_status("Showing the robot's saved tuning.", theme.MUTED)

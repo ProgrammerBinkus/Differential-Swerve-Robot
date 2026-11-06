@@ -12,9 +12,13 @@ from station.keyboard import KEYMAP, key_label
 from station.parts import WIRE_LAYERS, PartInfo
 from station.settings import StationSettings
 from station.views.robot_view import LAYER_COLORS, RobotView
-from station.widgets import Card, Keycap, NumberRow, Terminal, ToggleSwitch
+from station.widgets import Card, Keycap, NumberRow, Segmented, Terminal, ToggleSwitch
 
 PANEL_TEXT_WIDTH = 270
+
+# "Robot faces ..." choices for Set field forward, in degrees from "away from the driver station"
+# (counter-clockwise positive, as seen from above).
+FACINGS = (("away", "Away", 0.0), ("left", "Left", 90.0), ("toward", "Toward", 180.0), ("right", "Right", -90.0))
 
 
 @dataclass
@@ -25,6 +29,8 @@ class DriveTabActions:
     select_part: Callable[[Optional[str]], None]
     settings_changed: Callable[[], None]
     keyboard_toggled: Callable[[bool], None]
+    field_toggled: Callable[[bool], None]
+    set_field_forward: Callable[[float], None]
 
 
 class LayerChip(tk.Frame):
@@ -63,9 +69,10 @@ class DriveTab(ttk.Frame):
         left = ttk.Frame(self)
         left.grid(row=0, column=0, sticky="nsew")
         left.columnconfigure(0, weight=1)
-        left.rowconfigure(1, weight=1)
+        left.rowconfigure(2, weight=1)
         self._build_part_panel(left).grid(row=0, column=0, sticky="nsew")
-        self._build_terminal(left).grid(row=1, column=0, sticky="nsew", pady=(14, 0))
+        self._build_field(left).grid(row=1, column=0, sticky="ew", pady=(14, 0))
+        self._build_terminal(left).grid(row=2, column=0, sticky="nsew", pady=(14, 0))
 
         self._build_figure(self).grid(row=0, column=1, sticky="nsew", padx=14)
 
@@ -127,6 +134,37 @@ class DriveTab(ttk.Frame):
             ttk.Label(self._legend, text=label, style="Card.TLabel").grid(row=row, column=1, sticky="w", pady=2)
         self.show_part(None)
         return card
+
+    def _build_field(self, parent: tk.Misc) -> Card:
+        card = Card(parent, "Field-relative drive")
+        top = ttk.Frame(card, style="Plain.TFrame")
+        top.grid(row=1, column=0, sticky="ew")
+        top.columnconfigure(1, weight=1)
+        self._field_switch = ToggleSwitch(top, "Field-relative", False, self._actions.field_toggled)
+        self._field_switch.grid(row=0, column=0, sticky="w")
+        self._heading_label = tk.Label(top, text="—", bg=theme.SHEET, fg=theme.MUTED, font=(theme.MONO, 12))
+        self._heading_label.grid(row=0, column=1, sticky="e")
+        self._field_status = ttk.Label(card, text="", style="CardMuted.TLabel", wraplength=PANEL_TEXT_WIDTH,
+                                       justify="left")
+        self._field_status.grid(row=2, column=0, sticky="w", pady=(6, 10))
+
+        ttk.Label(card, text="ROBOT FACES (FROM WHERE YOU STAND)", style="CardLabel.TLabel").grid(
+            row=3, column=0, sticky="w")
+        self._facings = {key: degrees for key, _label, degrees in FACINGS}
+        self._facing_switch = Segmented(card, tuple((key, label) for key, label, _ in FACINGS), "away",
+                                        lambda key: self._facing_switch.set(key))
+        self._facing_switch.grid(row=4, column=0, sticky="w", pady=(4, 8))
+        self._field_button = ttk.Button(card, text="Set field forward", command=self._set_field_forward)
+        self._field_button.grid(row=5, column=0, sticky="ew")
+        ttk.Label(card, text="Sets \"forward\" to away from the laptop. Point the robot, pick which way it "
+                             "faces as seen from the laptop, then press it.",
+                  style="CardMuted.TLabel", wraplength=PANEL_TEXT_WIDTH, justify="left").grid(
+            row=6, column=0, sticky="w", pady=(6, 0))
+        self.show_field(None, connected=False, imu=None)
+        return card
+
+    def _set_field_forward(self) -> None:
+        self._actions.set_field_forward(self._facings[self._facing_switch.value])
 
     def _build_controls(self, parent: tk.Misc) -> Card:
         card = Card(parent, "Robot control")
@@ -238,6 +276,31 @@ class DriveTab(ttk.Frame):
         self._mode_label.configure(text=mode)
         self._zero_button.state(["!disabled"] if robot_ready and not enabled else ["disabled"])
         self._home_button.state(["!disabled"] if enabled else ["disabled"])
+
+    def show_field(self, field_relative: Optional[bool], connected: bool, imu: Optional[dict],
+                   update_switch: bool = True) -> None:
+        """Show the robot's field-relative setting and IMU state (``None`` while not connected)."""
+        if update_switch:
+            self._field_switch.set(bool(field_relative))
+        self._field_switch.set_enabled(connected and field_relative is not None)
+        status = (imu or {}).get("status")
+        heading = (imu or {}).get("heading")
+        self._heading_label.configure(text="—" if heading is None else f"{round(heading):+d}°",  # never "-0°"
+                                      fg=theme.INK if heading is not None else theme.MUTED)
+        if not connected or imu is None:
+            text, color = "Robot not connected.", theme.MUTED
+        elif status == "absent":
+            text, color = "No IMU found: driving robot-relative.", theme.WARN
+        elif status == "fault":
+            text, color = "IMU not answering: driving robot-relative.", theme.ERROR
+        elif status == "calibrating":
+            text, color = "Gyro calibrating. Keep the robot still.", theme.WARN
+        elif field_relative:
+            text, color = "On: stick forward drives away from the laptop.", theme.OK
+        else:
+            text, color = "Off: stick forward drives the robot's front forward.", theme.MUTED
+        self._field_status.configure(text=text, foreground=color)
+        self._field_button.state(["!disabled"] if connected and status == "ok" else ["disabled"])
 
     def show_keyboard(self, on: bool, paused: bool) -> None:
         """Show or hide the keymap, and say when keys are paused."""

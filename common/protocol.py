@@ -36,6 +36,7 @@ class MsgType:
     TELEMETRY = "telemetry"      # robot -> station (UDP)
     GET_CONFIG = "get_config"    # station -> robot (TCP)
     SET_CONFIG = "set_config"    # station -> robot (TCP): partial update
+    SET_FIELD_FORWARD = "set_field_forward"  # station -> robot (TCP): {"facing_deg": 0 | 90 | 180 | -90}
     CONFIG = "config"            # robot -> station (TCP): full current config
     RESULT = "result"            # robot -> station (TCP): outcome of a request
     LOG = "log"                  # robot -> station (TCP): one log record

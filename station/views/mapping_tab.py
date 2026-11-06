@@ -25,6 +25,7 @@ def mapping_of(config: dict[str, Any]) -> dict[str, Any]:
         "motors": {motor_id: {"hbridge": config["motors"][motor_id]["hbridge"],
                               "channel": config["motors"][motor_id]["channel"]} for motor_id in MOTOR_IDS},
         "encoders": {encoder_id: {"bus": config["encoders"][encoder_id]["bus"]} for encoder_id in ENCODER_IDS},
+        "imu": {"bus": config["imu"]["bus"], "invert_yaw": config["imu"]["invert_yaw"]},
     }
 
 
@@ -65,7 +66,12 @@ class MappingTab(ttk.Frame):
 
         self._build_modules().grid(row=1, column=0, columnspan=2, sticky="ew")
         self._build_motors().grid(row=2, column=0, sticky="nsew", pady=12, padx=(0, 6))
-        self._build_encoders().grid(row=2, column=1, sticky="nsew", pady=12, padx=(6, 0))
+        right = ttk.Frame(self)
+        right.grid(row=2, column=1, sticky="nsew", pady=12, padx=(6, 0))
+        right.columnconfigure(0, weight=1)
+        right.rowconfigure(1, weight=1)
+        self._build_encoders(right).grid(row=0, column=0, sticky="nsew")
+        self._build_imu(right).grid(row=1, column=0, sticky="nsew", pady=(12, 0))
 
         self._status = ttk.Label(self, text="Waiting for the robot's configuration...", style="Muted.TLabel",
                                  wraplength=1100, justify="left")
@@ -128,8 +134,8 @@ class MappingTab(ttk.Frame):
                 var.trace_add("write", self._on_change)
         return card
 
-    def _build_encoders(self) -> Card:
-        card = Card(self, "Encoders → I2C buses")
+    def _build_encoders(self, parent: tk.Misc) -> Card:
+        card = Card(parent, "Encoders → I2C buses")
         table = ttk.Frame(card, style="Plain.TFrame")
         table.grid(row=1, column=0, sticky="w")
         self._headers(table, ("Encoder", "Linux bus", "Header pins"))
@@ -148,6 +154,31 @@ class MappingTab(ttk.Frame):
         ttk.Label(card, text="Every MT6701 answers at 0x06, so each needs its own bus. "
                              "Run `i2cdetect -l` on the Pi to see the bus numbers. Press Enter to save a bus.",
                   style="CardMuted.TLabel", wraplength=480, justify="left").grid(row=2, column=0, sticky="w",
+                                                                                 pady=(8, 0))
+        return card
+
+    def _build_imu(self, parent: tk.Misc) -> Card:
+        card = Card(parent, "IMU (MPU-6050)")
+        row = ttk.Frame(card, style="Plain.TFrame")
+        row.grid(row=1, column=0, sticky="w")
+        ttk.Label(row, text="LINUX BUS", style="CardLabel.TLabel").grid(row=0, column=0, padx=(10, 10), sticky="w")
+        self._imu_bus = tk.StringVar()
+        entry = ttk.Entry(row, textvariable=self._imu_bus, width=14, font=theme.FONT_MONO)
+        entry.grid(row=0, column=1, padx=(0, 10))
+        entry.bind("<Return>", self._on_change)
+        entry.bind("<FocusOut>", self._on_change)
+        self._inputs.append(entry)
+        self._imu_pins = ttk.Label(row, text="", style="CardMuted.TLabel")
+        self._imu_pins.grid(row=0, column=2, sticky="w")
+        self._imu_invert = tk.BooleanVar()
+        check = ttk.Checkbutton(card, text="Invert heading (board mounted upside down)", variable=self._imu_invert,
+                                style="Card.TCheckbutton")
+        check.grid(row=2, column=0, sticky="w", padx=10, pady=(8, 0))
+        self._inputs.append(check)
+        self._imu_invert.trace_add("write", self._on_change)
+        ttk.Label(card, text="Check: turn the robot counter-clockwise by hand and the heading on the Drive tab "
+                             "should go up. If it goes down, tick Invert heading.",
+                  style="CardMuted.TLabel", wraplength=480, justify="left").grid(row=3, column=0, sticky="w",
                                                                                  pady=(8, 0))
         return card
 
@@ -171,6 +202,11 @@ class MappingTab(ttk.Frame):
             var.set(encoder["bus"])
             self._pin_labels[encoder_id].configure(
                 text=f"{encoder.get('sda_pin', '?')} SDA / {encoder.get('scl_pin', '?')} SCL")
+        imu = config["imu"]
+        self._imu_bus.set(imu["bus"])
+        self._imu_invert.set(imu["invert_yaw"])
+        self._imu_pins.configure(text=f"{imu.get('sda_pin', '?')} SDA / {imu.get('scl_pin', '?')} SCL · "
+                                      f"address 0x{imu['address']:02x}")
         self._loading = False
         if self._status_color != theme.OK:  # keep "Saved at ..." visible
             self._set_status("Showing the robot's saved mapping.", theme.MUTED)
@@ -221,7 +257,8 @@ class MappingTab(ttk.Frame):
         motors = {motor_id: {"hbridge": v["hbridge"].get(), "channel": v["channel"].get()}
                   for motor_id, v in self._motor_vars.items()}
         encoders = {encoder_id: {"bus": var.get().strip()} for encoder_id, var in self._encoder_vars.items()}
-        return {"modules": modules, "motors": motors, "encoders": encoders}
+        imu = {"bus": self._imu_bus.get().strip(), "invert_yaw": self._imu_invert.get()}
+        return {"modules": modules, "motors": motors, "encoders": encoders, "imu": imu}
 
     def _on_change(self, *_args: object) -> None:
         if self._loading or self._config is None or not self._can_apply:

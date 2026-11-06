@@ -36,8 +36,10 @@ ENCODER_COUNTS = 16384  # MT6701 reports a 14-bit angle per revolution
 # What the driver station may change at runtime: for each section, the keys
 # each entry may set. Offsets are written only by Swerve Set Zero on the robot,
 # and the H-bridge pin wiring only in robot_config.json.
-EDITABLE_SECTIONS = ("motors", "encoders", "modules", "tuning", "field_relative")
-MAPPING_SECTIONS = ("motors", "encoders", "modules")
+EDITABLE_SECTIONS = ("motors", "encoders", "modules", "imu", "tuning", "field_relative")
+MAPPING_SECTIONS = ("motors", "encoders", "modules", "imu")
+IMU_ADDRESSES = (0x68, 0x69)  # MPU-6050: 0x68 with AD0 low (the GY-521 default), 0x69 with AD0 high
+_EDITABLE_IMU_KEYS = {"bus", "invert_yaw"}
 _EDITABLE_ENTRY_KEYS = {
     "motors": {"hbridge", "channel"},
     "encoders": {"bus"},
@@ -146,6 +148,9 @@ _DEFAULT_CONFIG: dict[str, Any] = {
         "BR": {"motor_a": "M6", "motor_b": "M7", "encoder": "E4",
                "invert_a": False, "invert_b": False, "invert_encoder": False, "offset": 0},
     },
+    # MPU-6050 (GY-521) on I2C0 with encoder E1 (wiring sheet E-01). Turn the robot counter-clockwise
+    # by hand: the heading should go up. If it goes down, the board is upside down: set invert_yaw.
+    "imu": {"bus": "/dev/i2c-0", "address": 0x68, "invert_yaw": False, "sda_pin": 3, "scl_pin": 5},
     "tuning": {field.key: field.default for field in TUNING_FIELDS},
     # Distance from the robot's center to each module along x and along y.
     # Only the shape matters for a square robot, but measure it anyway.
@@ -153,7 +158,7 @@ _DEFAULT_CONFIG: dict[str, Any] = {
     "loop_hz": 200,
     "pwm_frequency_hz": 20000,
     "watchdog_s": 0.25,
-    # Needs a working MPU-6050, which is still a placeholder.
+    # Drive relative to the field (forward = away from the driver station) using the MPU-6050 heading.
     "field_relative": False,
 }
 
@@ -191,6 +196,10 @@ def merge_config(base: dict[str, Any], update: dict[str, Any]) -> dict[str, Any]
     if not isinstance(tuning, dict):
         raise ConfigError("'tuning' must be an object")
     forbidden += [f"tuning.{key}" for key in tuning if key not in TUNING_BY_KEY]
+    imu = update.get("imu", {})
+    if not isinstance(imu, dict):
+        raise ConfigError("'imu' must be an object")
+    forbidden += [f"imu.{key}" for key in imu if key not in _EDITABLE_IMU_KEYS]
     if forbidden:
         raise ConfigError(f"These settings cannot be changed remotely: {', '.join(forbidden)}")
     result = copy.deepcopy(base)
@@ -340,6 +349,19 @@ def _validate_modules(config: dict[str, Any], errors: list[str]) -> None:
         errors.append(f"encoder {encoder_id} is assigned to more than one module")
 
 
+def _validate_imu(config: dict[str, Any], errors: list[str]) -> None:
+    imu = config.get("imu")
+    if not isinstance(imu, dict):
+        errors.append("imu section is missing")
+        return
+    if not isinstance(imu.get("bus"), str) or not imu["bus"].strip():
+        errors.append("imu.bus must be an I2C bus path such as /dev/i2c-0")
+    if imu.get("address") not in IMU_ADDRESSES:
+        errors.append("imu.address must be 0x68 (104) or 0x69 (105)")
+    if not isinstance(imu.get("invert_yaw"), bool):
+        errors.append("imu.invert_yaw must be true or false")
+
+
 def validate_config(config: dict[str, Any]) -> list[str]:
     """Check a full configuration. Returns a list of problems (empty if valid)."""
     errors: list[str] = []
@@ -347,6 +369,7 @@ def validate_config(config: dict[str, Any]) -> list[str]:
     _validate_motors(config, errors)
     _validate_encoders(config, errors)
     _validate_modules(config, errors)
+    _validate_imu(config, errors)
 
     tuning = config.get("tuning")
     if not isinstance(tuning, dict):

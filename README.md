@@ -11,7 +11,7 @@ common/                 shared by both sides
 robot/                  runs on the Orange Pi
   robot.py              200 Hz main loop, watchdog, modes, config updates
   swerve/               steering-angle tracking, differential mix, module, drivetrain
-  hardware/             AT8236 motor channels, MT6701 encoders, MPU-6050 stub, simulator
+  hardware/             AT8236 motor channels, MT6701 encoders, MPU-6050 heading, simulator
   net.py                UDP command receiver + TCP control server
 station/                runs on the laptop
   app.py                window, 50 Hz tick, safety rules
@@ -89,13 +89,16 @@ respond to the controller exactly as the real robot should once it is configured
    but the Linux numbering is board-image specific, so trust the probe.
 5. **Check the encoders:** `venv/bin/python -m tools.encoder_monitor`. Turning a wheel one full turn
    should change its angle by 360°.
-6. **Set the invert flags, wheels off the ground:**
+6. **Check the IMU:** with the robot running and the driver station connected, keep the robot still for
+   two seconds while the gyro calibrates, then turn it counter-clockwise by hand. The heading in the
+   *Field-relative drive* panel should go up. If it goes down, tick *Invert heading* on the Mapping tab.
+7. **Set the invert flags, wheels off the ground:**
    ```bash
    venv/bin/python -m tools.motor_test module FL
    ```
    It runs pure drive and then pure steer and tells you which flags to change. Repeat for FR, BL, BR and
    set the flags in the Mapping tab. `motor_test motor M3` spins a single motor if you need it.
-7. **Run:** `venv/bin/python main.py robot`. Point the driver station at the Pi's hostname or IP.
+8. **Run:** `venv/bin/python main.py robot`. Point the driver station at the Pi's hostname or IP.
 
 To start on boot, a systemd unit along these lines works (adjust the paths):
 
@@ -135,6 +138,26 @@ sliders as the sticks, and if a controller is also connected, held keys take ove
 
 Keys never drive while you're typing in a text box, such as the robot address or a number box. Click
 the drawing or press Esc to drive again. When the window loses focus, every key counts as released.
+
+**Field-relative drive:** with it on, pushing the left stick away from you drives the robot away from
+you, whichever way the robot is facing, as the outline asks ("wherever it is pointing the robot should
+go"). Turn it on in the *Field-relative drive* panel on the Drive tab. It saves on the robot and works
+while driving.
+
+- **"Forward" is away from the laptop.** The MPU-6050 measures turning but has no compass, so the robot
+  can't know on its own which way the laptop is. You tell it: point the robot, pick which way it faces
+  as seen from where you stand at the laptop (*Away*, *Left*, *Toward*, *Right*), and press **Set field
+  forward**. At start-up the robot assumes it faces away from you.
+- **Calibration:** the gyro measures its resting offset in the first two seconds after the robot program
+  starts, so keep the robot still then. The panel says "calibrating" until it's done.
+- **Drift:** the heading creeps slowly, a few degrees a minute. If forward starts to feel off, point the
+  robot away from you and press **Set field forward** again.
+- **The dial** in the top-right corner of the drawing shows "away from the laptop" as seen from the
+  robot. The arrow points away from you and the dot marks your side.
+- **Without a working IMU** (not found, calibrating, or not answering), the robot drives robot-relative
+  and the panel says why.
+- The simulator has a simulated gyro and turns the chassis as the wheels push it, so field-relative drive
+  can be tried there too.
 
 Before the first run, line every wheel up straight by hand and press **−**. At every start-up after that,
 each wheel must be within ±90° of zero (the encoder is geared 2:1, so it cannot tell 0° from 180°).
@@ -230,7 +253,5 @@ the configuration, configuration changes and the Pi's log lines.
 
 ## Still to do
 
-- **MPU-6050:** `robot/hardware/imu.py` is a placeholder, as the BOM asks. Implementing it enables the
-  field-relative option.
 - **Measure:** max wheel speed (Tuning tab) and `geometry.module_offset_m` in `robot_config.json`.
 - **Tune** the steering PID on the real robot (order is listed on the Tuning tab).

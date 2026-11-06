@@ -61,3 +61,10 @@ def test_merge_keeps_untouched_keys():
 def test_remote_update_rejects_keys_it_may_not_set(update):
     with pytest.raises(ConfigError):
         merge_config(default_config(), update)
+
+
+def test_imu_bus_and_direction_are_editable_but_not_its_address():
+    merged = merge_config(default_config(), {"imu": {"bus": "/dev/i2c-5", "invert_yaw": True}})
+    assert validate_config(merged) == []
+    with pytest.raises(ConfigError):
+        merge_config(default_config(), {"imu": {"address": 0x69}})

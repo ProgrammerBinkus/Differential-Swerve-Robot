@@ -75,8 +75,8 @@ PARTS: tuple[Part, ...] = (
          "Cuts all power. Press Return to Zero (+) before switching off, so the wheels are parked at zero "
          "for the next start-up."),
     Part("mpu", "imu", "IMU", 254, 500, 56, 90, "MPU-6050 (GY-521)", "I2C0 · address 0x68",
-         "Shares I2C0 with encoder E1. Software support is a placeholder for now; it will enable "
-         "field-relative driving and return heading data to this laptop."),
+         "Shares I2C0 with encoder E1. Its gyro gives the heading for field-relative drive; it has no "
+         "compass, so set field forward from the Drive tab, and again if the heading drifts."),
     _hbridge("HB1", 160, 500), _hbridge("HB2", 500, 155),
     _hbridge("HB3", 845, 500), _hbridge("HB4", 500, 860),
     _motor("M1", 160, 595, True), _motor("M2", 160, 405, True),
@@ -223,7 +223,21 @@ def describe(part_id: str, config: Optional[dict[str, Any]],
         lines.append(f"Mode: {telemetry['mode']} · loop {telemetry['loop_ms']:.2f} ms "
                      f"(worst {telemetry['loop_ms_max']:.2f} ms)"
                      f"{' · SIMULATED HARDWARE' if telemetry.get('simulated') else ''}")
-    elif part.kind == "imu" and telemetry:
-        yaw = telemetry.get("imu", {}).get("yaw")
-        lines.append("Heading: not implemented yet" if yaw is None else f"Heading: {yaw:.1f}°")
+    elif part.kind == "imu":
+        if config:
+            imu = config["imu"]
+            lines.append(f"Bus {imu['bus']} · address 0x{imu['address']:02x}"
+                         f"{' · heading inverted' if imu['invert_yaw'] else ''}")
+        data = (telemetry or {}).get("imu")
+        if data:
+            status = {"ok": "working", "calibrating": "calibrating (keep the robot still)",
+                      "absent": "not found", "fault": "not answering"}.get(data["status"], data["status"])
+            lines.append(f"Status: {status}")
+            if data.get("heading") is not None:
+                lines.append(f"Field heading {data['heading']:+.1f}° · turning {data['rate']:+.1f}°/s")
+            if "accel" in data:
+                ax, ay, az = data["accel"]
+                lines.append(f"Accel {ax:+.2f} {ay:+.2f} {az:+.2f} g · {data.get('temp', 0):.1f} °C")
+        else:
+            lines.append("No telemetry from the robot.")
     return PartInfo(part.title, part.subtitle, lines, part.role)

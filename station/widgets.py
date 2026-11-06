@@ -228,6 +228,12 @@ class ToggleSwitch(tk.Frame):
         self._value = value
         self._draw()
 
+    def set_enabled(self, enabled: bool) -> None:
+        self._enabled = enabled
+        self._label.configure(fg=theme.INK if enabled else theme.MUTED)
+        for widget in (self, self._track, self._label):
+            widget.configure(cursor="hand2" if enabled else "")
+
     def _clicked(self, _event: tk.Event) -> None:
         if self._enabled:
             self._value = not self._value

@@ -47,6 +47,7 @@ class StationApp:
     TELEMETRY_PRINT_S = 0.5       # "Show telemetry" prints at 2 Hz
     ENABLE_GRACE_S = 1.0          # time the robot gets to report "enabled" after we enable
     SIMULATOR_RETRY_S = 3.0       # how often Simulator mode re-checks for a simulator to talk to
+    PENDING_SWITCH_S = 1.5        # keep showing a toggled switch while the robot confirms it
 
     def __init__(self, root: tk.Tk, settings: StationSettings, host: Optional[str] = None) -> None:
         """``host`` connects to that robot address for this session, without saving it."""
@@ -81,6 +82,7 @@ class StationApp:
         self._tick_job: Optional[str] = None
         self._keyboard_paused = False
         self._simulator_checked_at = time.monotonic()
+        self._field_pending_until = 0.0
 
         self._build()
         self.keyboard = KeyboardDrive(root, on_change=self.drive_tab.show_held_keys)
@@ -148,6 +150,8 @@ class StationApp:
             select_part=self._select_part,
             settings_changed=self._on_settings_changed,
             keyboard_toggled=self._set_keyboard,
+            field_toggled=self._set_field_relative,
+            set_field_forward=self._set_field_forward,
         ))
         self.mapping_tab = MappingTab(pages, apply=lambda update: self._send_config(update, "mapping"))
         self.tuning_tab = TuningTab(pages, apply=lambda update: self._send_config(update, "tuning"))
@@ -241,6 +245,8 @@ class StationApp:
             target = {"mapping": self.mapping_tab, "tuning": self.tuning_tab}.get(msg.get("tag"))
             if target is not None:
                 target.show_result(ok, text, errors)
+            if msg.get("tag") == "field":
+                self._field_pending_until = 0.0  # show what the robot actually has now
             self.terminal.write("robot", "; ".join([text, *errors]), "INFO" if ok else "ERROR")
         elif kind == MsgType.LOG:
             self.terminal.write("robot", str(msg.get("message", "")), str(msg.get("level", "INFO")))
@@ -251,6 +257,9 @@ class StationApp:
     @staticmethod
     def _summarize_telemetry(msg: dict[str, Any]) -> str:
         parts = [f"#{msg.get('seq')} {msg.get('mode')} · loop {msg.get('loop_ms', 0):.2f} ms"]
+        heading = (msg.get("imu") or {}).get("heading")
+        if heading is not None:
+            parts.append(f"heading {heading:+.1f}°{' field' if msg.get('field_relative_active') else ''}")
         for name in MODULE_NAMES:
             module = msg.get("modules", {}).get(name)
             if module and module.get("angle") is not None:
@@ -370,6 +379,19 @@ class StationApp:
         if not on and self._enabled and not self._pad.connected:
             self._disable("Keyboard control turned off and no controller is connected")
 
+    def _set_field_relative(self, on: bool) -> None:
+        """Turn field-relative drive on or off. The robot saves it and works live, even while driving."""
+        sent = self.link.send_control({"type": MsgType.SET_CONFIG, "tag": "field", "config": {"field_relative": on}})
+        if sent:
+            self._field_pending_until = time.monotonic() + self.PENDING_SWITCH_S
+            self.terminal.write("station", f"Field-relative drive {'on' if on else 'off'}")
+        else:
+            self.terminal.write("station", "Not connected: field-relative drive not changed", "WARNING")
+
+    def _set_field_forward(self, facing_deg: float) -> None:
+        if not self.link.send_control({"type": MsgType.SET_FIELD_FORWARD, "tag": "field", "facing_deg": facing_deg}):
+            self.terminal.write("station", "Not connected: field forward not set", "WARNING")
+
     def _focus_clicked_area(self, event: tk.Event) -> None:
         if not is_text_input(event.widget):
             self.root.focus_set()
@@ -420,6 +442,11 @@ class StationApp:
         self.drive_tab.show_state(self._enabled, alive and self._has_input, mode, alive)
         self.drive_tab.show_inputs(vx, vy, omega)
         self.drive_tab.robot_view.update_modules(telemetry["modules"] if telemetry else None)
+        imu = telemetry.get("imu") if telemetry else None
+        self.drive_tab.robot_view.update_heading(imu.get("heading") if imu else None)
+        field_relative = self._robot_config.get("field_relative") if self._robot_config and control else None
+        self.drive_tab.show_field(field_relative, connected=alive and control, imu=imu,
+                                  update_switch=time.monotonic() >= self._field_pending_until)
         self._refresh_part_panel()
 
         robot_disabled = bool(telemetry) and telemetry["mode"] == "disabled" and not self._enabled
