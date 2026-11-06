@@ -75,13 +75,22 @@ def probe_i2c(config: dict) -> None:
             print(f"{OK}{encoder_id} on {bus}: MT6701 at 0x06, raw angle {(high << 6) | (low >> 2)}")
         except I2CError as exc:
             print(f"{BAD}{encoder_id} on {bus}: no answer at 0x06 ({exc}). Check wiring and pull-ups.")
-        if encoder_id == "E1":
-            try:
-                msgs = [I2C.Message([0x75]), I2C.Message([0], read=True)]
-                i2c.transfer(0x68, msgs)
-                print(f"{OK}MPU-6050 on {bus}: WHO_AM_I = 0x{msgs[1].data[0]:02x}")
-            except I2CError:
-                print(f"{BAD}MPU-6050 on {bus}: no answer at 0x68")
+        i2c.close()
+
+    imu = config["imu"]
+    try:
+        i2c = I2C(imu["bus"])
+    except I2CError as exc:
+        print(f"{BAD}MPU-6050 on {imu['bus']}: cannot open ({exc})")
+        return
+    try:
+        msgs = [I2C.Message([0x75]), I2C.Message([0], read=True)]
+        i2c.transfer(imu["address"], msgs)
+        print(f"{OK}MPU-6050 on {imu['bus']} at 0x{imu['address']:02x}: WHO_AM_I = 0x{msgs[1].data[0]:02x}")
+    except I2CError:
+        print(f"{BAD}MPU-6050 on {imu['bus']}: no answer at 0x{imu['address']:02x}. Field-relative drive "
+              "will be unavailable.")
+    finally:
         i2c.close()
 
 

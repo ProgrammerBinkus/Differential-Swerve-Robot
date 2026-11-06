@@ -8,8 +8,8 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Any, Optional
 
-from common.config import MODULE_NAMES
-from common.protocol import COMMAND_RATE_HZ, DriveCommand, MsgType
+from common.config import MODULE_NAMES, deep_update, default_config
+from common.protocol import COMMAND_RATE_HZ, PROTOCOL_VERSION, DriveCommand, MsgType
 from station import APP_NAME, __version__, theme
 from station.gamepad import Gamepad, GamepadState
 from station.keyboard import KeyboardDrive, is_text_input
@@ -17,7 +17,7 @@ from station.link import LINK_EVENT, RobotLink
 from station.parts import describe
 from station.settings import StationSettings
 from station.shaping import shape_inputs
-from station.simulator import LocalSimulator
+from station.simulator import START_FAILED, LocalSimulator
 from station.views.drive_tab import DriveTab, DriveTabActions
 from station.views.mapping_tab import MappingTab
 from station.views.tuning_tab import TuningTab
@@ -80,8 +80,9 @@ class StationApp:
         self._last_telemetry_print = 0.0
         self._was_connected = False
         self._tick_job: Optional[str] = None
-        self._keyboard_paused = False
+        self._keyboard_paused: Optional[str] = None
         self._simulator_checked_at = time.monotonic()
+        self._simulator_message = ""
         self._field_pending_until = 0.0
 
         self._build()
@@ -182,7 +183,7 @@ class StationApp:
             self._return_to_zero()
 
         keys = self.keyboard.poll()  # None while keyboard control is off
-        paused = self.keyboard.enabled and self.keyboard.paused
+        paused = self.keyboard.pause_reason if self.keyboard.enabled else None
         if paused != self._keyboard_paused:
             self._keyboard_paused = paused
             self.drive_tab.show_keyboard(self.keyboard.enabled, paused)
@@ -237,7 +238,15 @@ class StationApp:
                 self._last_telemetry_print = time.monotonic()
                 self.terminal.write("data", self._summarize_telemetry(msg), "DEBUG")
         elif kind == MsgType.CONFIG and isinstance(msg.get("config"), dict):
-            self._robot_config = msg["config"]
+            if msg.get("protocol") != PROTOCOL_VERSION:
+                self.terminal.write("station", f"The robot runs a different software version (protocol "
+                                               f"{msg.get('protocol', 'unknown')}, this station {PROTOCOL_VERSION}). "
+                                               "Update both to the same version; some features may not work.",
+                                    "ERROR")
+            # Fill anything an older robot does not send, so every tab has the keys it reads.
+            config = default_config()
+            deep_update(config, msg["config"])
+            self._robot_config = config
             self.mapping_tab.load(self._robot_config)
             self.tuning_tab.load(self._robot_config)
             self.terminal.write("robot", "Sent its configuration")
@@ -343,6 +352,7 @@ class StationApp:
         self._connection_switch.set(connection)
         self._show_connection_widgets()
         self._telemetry = None
+        self._robot_config = None   # the new target sends its own on connecting
         if connection == "simulator":
             self.terminal.write("station", self.simulator.start())
         else:
@@ -362,8 +372,9 @@ class StationApp:
             return
         self._simulator_checked_at = now
         message = self.simulator.start()
-        if message.startswith("Starting"):
-            self.terminal.write("station", message)
+        if message != self._simulator_message:  # say each new situation once, not every retry
+            self._simulator_message = message
+            self.terminal.write("station", message, "ERROR" if message.startswith(START_FAILED) else "INFO")
 
     def _show_connection_widgets(self) -> None:
         state = ["!disabled"] if self._connection == "robot" else ["disabled"]
@@ -374,7 +385,7 @@ class StationApp:
         self.keyboard.enabled = on
         self.settings.keyboard_control = on
         self.settings.save()
-        self._keyboard_paused = on and self.keyboard.paused
+        self._keyboard_paused = self.keyboard.pause_reason if on else None
         self.drive_tab.show_keyboard(on, self._keyboard_paused)
         self.terminal.write("station", f"Keyboard control {'on' if on else 'off'}")
         if not on and self._enabled and not self._pad.connected:
@@ -453,14 +464,18 @@ class StationApp:
         if self.drive_tab.view == "field":
             offset = (self._robot_config or {}).get("geometry", {}).get("module_offset_m")
             self.drive_tab.field_view.update_state(telemetry["modules"] if telemetry else None, heading,
-                                                   telemetry.get("pose") if telemetry else None, offset)
+                                                   telemetry.get("pose") if telemetry else None, offset,
+                                                   imu_status=imu.get("status") if imu else None)
         field_relative = self._robot_config.get("field_relative") if self._robot_config and control else None
         self.drive_tab.show_field(field_relative, connected=alive and control, imu=imu,
                                   update_switch=time.monotonic() >= self._field_pending_until)
         self._refresh_part_panel()
 
         robot_disabled = bool(telemetry) and telemetry["mode"] == "disabled" and not self._enabled
-        reason = "" if robot_disabled else "Disable the robot to apply mapping changes."
+        if not (control and telemetry):
+            reason = "Not connected to the robot: the mapping can't be changed."
+        else:
+            reason = "" if robot_disabled else "Disable the robot to change the mapping."
         self.mapping_tab.set_can_apply(control and robot_disabled, reason)
         self.tuning_tab.set_connected(control)
 

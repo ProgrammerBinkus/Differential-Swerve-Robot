@@ -23,6 +23,7 @@ log = logging.getLogger(__name__)
 SIMULATOR_CONFIG_PATH = DATA_DIR / "simulator_config.json"
 SIMULATOR_LOG_PATH = LOG_DIR / "simulator.log"
 RUN_SIMULATOR_FLAG = "--run-simulator"   # the packaged app runs as the simulator when given this
+START_FAILED = "Could not start the built-in simulator"
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _CREATE_NO_WINDOW = 0x08000000
 
@@ -64,14 +65,19 @@ class LocalSimulator:
             return "Built-in simulator already running"
         if robot_ports_in_use():
             return "Using the simulator already running on this computer"
-        self._config_path.parent.mkdir(parents=True, exist_ok=True)
-        SIMULATOR_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        self._log_file = open(SIMULATOR_LOG_PATH, "ab")
-        self._process = subprocess.Popen(
-            simulator_command(self._config_path), cwd=str(_PROJECT_ROOT), stdin=subprocess.DEVNULL,
-            stdout=self._log_file, stderr=subprocess.STDOUT,
-            creationflags=_CREATE_NO_WINDOW if IS_WINDOWS else 0,
-        )
+        try:
+            self._config_path.parent.mkdir(parents=True, exist_ok=True)
+            SIMULATOR_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            self._log_file = open(SIMULATOR_LOG_PATH, "ab")
+            self._process = subprocess.Popen(
+                simulator_command(self._config_path), cwd=str(_PROJECT_ROOT), stdin=subprocess.DEVNULL,
+                stdout=self._log_file, stderr=subprocess.STDOUT,
+                creationflags=_CREATE_NO_WINDOW if IS_WINDOWS else 0,
+            )
+        except OSError as exc:
+            log.error("Could not start the simulator: %s", exc)
+            self._cleanup()
+            return f"{START_FAILED}: {exc}"
         self._job = ChildJob(int(self._process._handle)) if IS_WINDOWS else None
         log.info("Started the simulator (pid %d)", self._process.pid)
         return "Starting the built-in simulator"

@@ -87,13 +87,19 @@ class KeyboardDrive:
         return {ACTION_OF_KEY[key] for key in self._held}
 
     @property
-    def paused(self) -> bool:
-        """True while keys cannot drive: the window is not focused, or a text box is."""
+    def pause_reason(self) -> Optional[str]:
+        """Why keys cannot drive right now (``"unfocused"`` or ``"typing"``), or ``None`` if they can."""
         try:
             focus = self._root.focus_get()
         except KeyError:  # Tk cannot name a combobox drop-down that has focus
-            return True
-        return focus is None or is_text_input(focus)
+            return "typing"
+        if focus is None:
+            return "unfocused"
+        return "typing" if is_text_input(focus) else None
+
+    @property
+    def paused(self) -> bool:
+        return self.pause_reason is not None
 
     def poll(self) -> Optional[tuple[float, float, float]]:
         """Stick values from the keyboard, or ``None`` while keyboard control is off."""

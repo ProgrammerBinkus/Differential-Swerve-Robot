@@ -1,13 +1,14 @@
 """The simulated field position and the field view's geometry."""
 
 import json
+import tkinter as tk
 
 import pytest
 
 from common.protocol import DriveCommand
 from robot.robot import Robot
 from station.settings import StationSettings
-from station.views.field_view import robot_to_field
+from station.views.field_view import TRAIL_SECONDS, FieldView, robot_to_field
 
 DT = 0.005
 
@@ -66,3 +67,41 @@ def test_view_setting_is_validated(tmp_path):
     assert StationSettings.load(path).view == "field"
     path.write_text(json.dumps({"view": "map"}))
     assert StationSettings.load(path).view == "robot"
+
+
+@pytest.fixture(scope="module")
+def tk_root():
+    try:
+        window = tk.Tk()
+    except tk.TclError:
+        pytest.skip("no display")
+    window.withdraw()
+    yield window
+    window.destroy()
+
+
+def test_trail_points_expire_after_ten_seconds(tk_root):
+    view = FieldView(tk_root)
+    clock = [0.0]
+    view._clock = lambda: clock[0]
+    for step in range(50):                            # drive 1 m over 5 s
+        clock[0] = step * 0.1
+        view.update_state({}, 0.0, {"x": step * 0.02, "y": 0.0, "epoch": 1}, 0.12)
+    assert len(view._trail) == 50
+    clock[0] = 4.9 + TRAIL_SECONDS - 2.0              # parked: points older than 10 s are gone
+    view.update_state({}, 0.0, {"x": 0.98, "y": 0.0, "epoch": 1}, 0.12)
+    assert all(clock[0] - t <= TRAIL_SECONDS for _x, _y, t in view._trail)
+    assert 15 <= len(view._trail) <= 25
+    clock[0] = 4.9 + TRAIL_SECONDS + 0.5              # 10 s after the last move: nothing left
+    view.update_state({}, 0.0, {"x": 0.98, "y": 0.0, "epoch": 1}, 0.12)
+    assert len(view._trail) == 0
+    view.destroy()
+
+
+def test_new_field_frame_clears_the_trail(tk_root):
+    view = FieldView(tk_root)
+    view.update_state({}, 0.0, {"x": 0.0, "y": 0.0, "epoch": 1}, 0.12)
+    view.update_state({}, 0.0, {"x": 0.5, "y": 0.0, "epoch": 1}, 0.12)
+    view.update_state({}, 0.0, {"x": 0.0, "y": 0.0, "epoch": 2}, 0.12)
+    assert len(view._trail) == 1
+    view.destroy()

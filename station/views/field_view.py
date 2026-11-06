@@ -6,6 +6,9 @@ the one field-relative drive uses: up on the screen is "away from the driver
 station", set with *Set field forward*.
 
 The view follows the robot over a 0.5 m grid and leaves a trail behind it.
+Each point of the trail disappears ``TRAIL_SECONDS`` after the robot passed
+it, so the trail follows the robot and fades out when it stops; its older
+half is drawn dimmer.
 Position comes from the simulator; the real robot has no drive encoders, so
 it cannot measure where it is. It is then drawn at the center with its true
 heading, and a note says so.
@@ -14,6 +17,7 @@ heading, and a note says so.
 from __future__ import annotations
 
 import math
+import time
 import tkinter as tk
 from collections import deque
 from typing import Any, Optional
@@ -24,7 +28,8 @@ from station.parts import MODULE_CENTERS
 from station.views.robot_view import chassis_outline
 
 GRID_M = 0.5
-TRAIL_POINTS = 900               # about a minute at the UI refresh rate
+TRAIL_SECONDS = 10.0             # a point is dropped this long after the robot passed it
+TRAIL_POINTS = 2000              # hard cap, far above 10 s of points at the UI refresh rate
 TRAIL_MIN_STEP_M = 0.01
 SPAN_LIMITS_M = (2.0, 20.0)      # zoom range: field width visible across the view
 DRIVER_STATION_X_M = -0.75       # drawn just behind the point where field forward was set
@@ -46,36 +51,46 @@ class FieldView(tk.Canvas):
     def __init__(self, parent: tk.Misc) -> None:
         super().__init__(parent, bg=theme.SHEET, highlightthickness=0, width=620, height=620)
         self._span_m = 2.5
-        self._trail: deque[tuple[float, float]] = deque(maxlen=TRAIL_POINTS)
+        self._trail: deque[tuple[float, float, float]] = deque(maxlen=TRAIL_POINTS)  # (x, y, time)
+        self._clock = time.monotonic
         self._epoch: Optional[int] = None
         self._modules: dict[str, Any] = {}
         self._heading: Optional[float] = None
         self._pose: Optional[tuple[float, float]] = None
         self._module_offset_m = 0.12
+        self._imu_status: Optional[str] = None
         self.bind("<Configure>", lambda _e: self._redraw())
         self.bind("<MouseWheel>", self._on_wheel)
 
     # ---------------------------------------------------------------- public
 
     def update_state(self, modules: Optional[dict[str, Any]], heading_deg: Optional[float],
-                     pose: Optional[dict[str, Any]], module_offset_m: Optional[float]) -> None:
+                     pose: Optional[dict[str, Any]], module_offset_m: Optional[float],
+                     imu_status: Optional[str] = None) -> None:
         """New telemetry. ``pose`` is ``{"x", "y", "epoch"}`` from the simulator, or ``None``."""
         self._modules = modules or {}
+        self._imu_status = imu_status
         self._heading = heading_deg
         if module_offset_m:
             self._module_offset_m = module_offset_m
+        now = self._clock()
         if pose is not None:
             if pose.get("epoch") != self._epoch:      # field forward was set again: a new field frame
                 self._epoch = pose.get("epoch")
                 self._trail.clear()
             point = (pose["x"], pose["y"])
-            if not self._trail or math.dist(point, self._trail[-1]) >= TRAIL_MIN_STEP_M:
-                self._trail.append(point)
+            if not self._trail or math.dist(point, self._trail[-1][:2]) >= TRAIL_MIN_STEP_M:
+                self._trail.append((*point, now))
             self._pose = point
         else:
             self._pose = None
             self._trail.clear()
+        self._expire_trail(now)
         self._redraw()
+
+    def _expire_trail(self, now: float) -> None:
+        while self._trail and now - self._trail[0][2] > TRAIL_SECONDS:
+            self._trail.popleft()
 
     # --------------------------------------------------------------- drawing
 
@@ -98,15 +113,27 @@ class FieldView(tk.Canvas):
 
         self._draw_grid(width, height, scale, center, screen)
         self._draw_landmarks(screen, scale)
-        if len(self._trail) > 1:
-            self.create_line(*[c for point in self._trail for c in screen(*point)], fill=theme.MUTED,
-                             width=2, smooth=True, capstyle="round", joinstyle="round")
+        self._draw_trail(screen)
         if self._heading is None:
-            self.create_text(width / 2, height / 2, text="NO HEADING YET", fill=theme.MUTED,
-                             font=theme.display_font(16))
+            reason = {"absent": "NO IMU FOUND", "fault": "IMU NOT ANSWERING",
+                      "calibrating": "GYRO CALIBRATING: KEEP THE ROBOT STILL"}.get(self._imu_status or "", "NO DATA")
+            self.create_text(width / 2, height / 2, text=reason, fill=theme.MUTED, font=theme.display_font(16))
         else:
             self._draw_robot(screen, scale)
         self._draw_overlay(width, height)
+
+    def _draw_trail(self, screen) -> None:
+        """The path of the last ``TRAIL_SECONDS``: the newer half brighter than the older half."""
+        if len(self._trail) < 2:
+            return
+        now = self._clock()
+        split = next((i for i, (_x, _y, t) in enumerate(self._trail) if now - t <= TRAIL_SECONDS / 2),
+                     len(self._trail))
+        points = list(self._trail)
+        for segment, color in ((points[:split + 1], theme.RULE), (points[split:], theme.MUTED)):
+            if len(segment) > 1:
+                self.create_line(*[c for x, y, _t in segment for c in screen(x, y)], fill=color, width=2,
+                                 smooth=True, capstyle="round", joinstyle="round")
 
     def _draw_grid(self, width, height, scale, center, screen) -> None:
         half_x, half_y = height / scale / 2 + GRID_M, width / scale / 2 + GRID_M

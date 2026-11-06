@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from common.config import MAPPING_SECTIONS, ConfigError, merge_config, validate_config
-from common.protocol import TCP_PORT, TELEMETRY_RATE_HZ, UDP_PORT, DriveCommand, MsgType
+from common.protocol import PROTOCOL_VERSION, TCP_PORT, TELEMETRY_RATE_HZ, UDP_PORT, DriveCommand, MsgType
 from robot.config_store import ConfigStore
 from robot.hardware import HardwareError, open_hardware
 from robot.net import BroadcastLogHandler, CommandReceiver, ControlEvent, ControlServer
@@ -318,7 +318,7 @@ class Robot:
         return result(True, "Field forward set")
 
     def _config_message(self) -> dict[str, Any]:
-        return {"type": MsgType.CONFIG, "config": self.config}
+        return {"type": MsgType.CONFIG, "config": self.config, "protocol": PROTOCOL_VERSION}
 
     def _save_config(self) -> None:
         try:

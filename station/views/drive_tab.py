@@ -282,7 +282,7 @@ class DriveTab(ttk.Frame):
                 cap.pack(side="left", padx=(0, 3))
                 self._keycaps[action].append(cap)
             ttk.Label(cell, text=label, style="Card.TLabel").pack(side="left", padx=(4, 0))
-        self.show_keyboard(self._settings.keyboard_control, paused=False)
+        self.show_keyboard(self._settings.keyboard_control, paused=None)
         return frame
 
     def _build_terminal(self, parent: tk.Misc) -> Card:
@@ -343,12 +343,14 @@ class DriveTab(ttk.Frame):
         self._field_status.configure(text=text, foreground=color)
         self._field_button.state(["!disabled"] if connected and status == "ok" else ["disabled"])
 
-    def show_keyboard(self, on: bool, paused: bool) -> None:
-        """Show or hide the keymap, and say when keys are paused."""
+    def show_keyboard(self, on: bool, paused: Optional[str]) -> None:
+        """Show or hide the keymap, and say why keys are paused (``"typing"``/``"unfocused"``)."""
         self._keyboard_switch.set(on)
         if on:
             self._keymap.grid(row=2, column=0, sticky="w", pady=(8, 0))
-            self._keyboard_hint.configure(text="Paused while typing. Click the drawing to drive." if paused else "")
+            hints = {"typing": "Paused while typing. Click the drawing or press Esc.",
+                     "unfocused": "Paused: click this window to drive."}
+            self._keyboard_hint.configure(text=hints.get(paused or "", ""))
         else:
             self._keymap.grid_remove()
             self._keyboard_hint.configure(text="")

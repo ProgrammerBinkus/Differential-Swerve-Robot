@@ -64,3 +64,8 @@ def test_mapping_change_rejected_while_enabled(robot):
     run(robot, 0.05, DriveCommand(seq=2, enabled=True))
     result = robot._apply_config_update({"config": {"modules": {"FL": {"invert_a": True}}}})
     assert not result["ok"]
+
+
+def test_config_message_carries_the_protocol_version(robot):
+    from common.protocol import PROTOCOL_VERSION
+    assert robot._config_message()["protocol"] == PROTOCOL_VERSION

@@ -92,3 +92,14 @@ def test_turning_keyboard_off_releases_keys(root):
     keyboard.enabled = False
     assert keyboard.held_actions == set()
     assert seen[-1] == set()
+
+
+def test_pause_reason_says_why(root, monkeypatch):
+    keyboard = KeyboardDrive(root)
+    monkeypatch.setattr(root, "focus_get", lambda: None)
+    assert keyboard.pause_reason == "unfocused"
+    entry = tk.Entry(root)
+    monkeypatch.setattr(root, "focus_get", lambda: entry)
+    assert keyboard.pause_reason == "typing"
+    monkeypatch.setattr(root, "focus_get", lambda: root)
+    assert keyboard.pause_reason is None

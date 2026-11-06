@@ -52,10 +52,10 @@ class Hardware:
         if self._plant is not None:
             self._plant.configure(config)
             return
-        if self.imu.bus_path not in (None, config["imu"]["bus"]):
+        if self.imu.status == "absent" or self.imu.bus_path != config["imu"]["bus"]:
             self.imu.close()
-            self.imu = Imu.open(config["imu"])  # missing is not an error: it reports "absent"
-            log.info("IMU moved to %s", config["imu"]["bus"])
+            self.imu = Imu.open(config["imu"])  # still missing is not an error: it reports "absent"
+            log.info("IMU on %s: %s", config["imu"]["bus"], self.imu.status)
         for encoder_id in ENCODER_IDS:
             bus = config["encoders"][encoder_id]["bus"]
             current = self.encoders[encoder_id]
