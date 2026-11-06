@@ -16,6 +16,9 @@ from station.views.robot_view import LAYER_COLORS, RobotView
 from station.widgets import Card, Keycap, NumberRow, Segmented, Terminal, ToggleSwitch
 
 PANEL_TEXT_WIDTH = 270
+# The right-hand column has a fixed width, so changing text (a hint, the robot's mode) can never
+# resize it and squeeze the drawing.
+SIDE_WIDTH = 406
 
 # Short layer names for the toolbar chips (the part panel's legend has the full ones).
 CHIP_LABELS = {"battery": "Battery", "5v": "5 V", "motor": "Motor leads", "control": "Control", "i2c": "I2C"}
@@ -86,8 +89,9 @@ class DriveTab(ttk.Frame):
 
         self._build_figure(self).grid(row=0, column=1, sticky="nsew", padx=14)
 
-        side = ttk.Frame(self)
+        side = ttk.Frame(self, width=SIDE_WIDTH)
         side.grid(row=0, column=2, sticky="nsew")
+        side.grid_propagate(False)  # keep SIDE_WIDTH whatever the content asks for
         side.columnconfigure(0, weight=1)
         self._build_controls(side).grid(row=0, column=0, sticky="ew")
         self._build_sticks(side).grid(row=1, column=0, sticky="ew", pady=(14, 0))
@@ -258,14 +262,12 @@ class DriveTab(ttk.Frame):
         frame = ttk.Frame(parent, style="Plain.TFrame")
         frame.columnconfigure(0, weight=1)
         tk.Frame(frame, height=1, bg=theme.RULE).grid(row=0, column=0, sticky="ew", pady=(0, 10))
-        header = ttk.Frame(frame, style="Plain.TFrame")
-        header.grid(row=1, column=0, sticky="ew")
-        header.columnconfigure(1, weight=1)
-        self._keyboard_switch = ToggleSwitch(header, "Keyboard control", self._settings.keyboard_control,
+        self._keyboard_switch = ToggleSwitch(frame, "Keyboard control", self._settings.keyboard_control,
                                              self._actions.keyboard_toggled)
-        self._keyboard_switch.grid(row=0, column=0, sticky="w")
-        self._keyboard_hint = ttk.Label(header, text="", style="CardMuted.TLabel")
-        self._keyboard_hint.grid(row=0, column=1, sticky="e")
+        self._keyboard_switch.grid(row=1, column=0, sticky="w")
+        # Its own line under the switch, always one line tall while keyboard control is on, so a hint
+        # appearing or disappearing never moves anything.
+        self._keyboard_hint = ttk.Label(frame, text=" ", style="CardMuted.TLabel", wraplength=SIDE_WIDTH - 40)
 
         # The keymap, two actions per row: forward/back, strafe left/right, turn left/right.
         self._keymap = ttk.Frame(frame, style="Plain.TFrame")
@@ -347,13 +349,14 @@ class DriveTab(ttk.Frame):
         """Show or hide the keymap, and say why keys are paused (``"typing"``/``"unfocused"``)."""
         self._keyboard_switch.set(on)
         if on:
-            self._keymap.grid(row=2, column=0, sticky="w", pady=(8, 0))
-            hints = {"typing": "Paused while typing. Click the drawing or press Esc.",
-                     "unfocused": "Paused: click this window to drive."}
-            self._keyboard_hint.configure(text=hints.get(paused or "", ""))
+            hints = {"typing": "Keys paused while typing. Click the drawing or press Esc.",
+                     "unfocused": "Keys paused: click this window to drive."}
+            self._keyboard_hint.configure(text=hints.get(paused or "", " "))
+            self._keyboard_hint.grid(row=2, column=0, sticky="w", pady=(4, 0))
+            self._keymap.grid(row=3, column=0, sticky="w", pady=(4, 0))
         else:
+            self._keyboard_hint.grid_remove()
             self._keymap.grid_remove()
-            self._keyboard_hint.configure(text="")
 
     def show_held_keys(self, actions: set[str]) -> None:
         for action, caps in self._keycaps.items():

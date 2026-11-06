@@ -312,12 +312,14 @@ class StatusLight(tk.Frame):
 
     COLORS = {"ok": theme.OK, "warn": theme.WARN, "error": theme.ERROR, "off": theme.RULE}
 
-    def __init__(self, parent: tk.Misc, background: str = theme.SHEET) -> None:
+    def __init__(self, parent: tk.Misc, background: str = theme.SHEET, width_chars: int = 0) -> None:
+        """``width_chars`` fixes the text's width, so the layout doesn't shift as the status changes."""
         super().__init__(parent, bg=background)
         self._dot = tk.Canvas(self, width=10, height=10, bg=background, highlightthickness=0)
         self._dot.pack(side="left", padx=(0, 7))
         self._circle = self._dot.create_oval(1, 1, 9, 9, fill=theme.RULE, outline="")
-        self._text = tk.Label(self, text="", bg=background, fg=theme.INK, font=theme.FONT, anchor="w")
+        self._text = tk.Label(self, text="", bg=background, fg=theme.INK, font=theme.FONT, anchor="w",
+                              width=width_chars)
         self._text.pack(side="left")
 
     def set(self, state: str, text: str) -> None:

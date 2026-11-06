@@ -123,9 +123,9 @@ class StationApp:
                                             (("simulator", "Simulator"), ("robot", "Robot")),
                                             self._connection, self._set_connection)
         self._connection_switch.pack(anchor="w", pady=(3, 0))
-        self._robot_light = StatusLight(block.add_cell("Robot"))
+        self._robot_light = StatusLight(block.add_cell("Robot"), width_chars=27)
         self._robot_light.pack(anchor="w", pady=(2, 0))
-        self._pad_light = StatusLight(block.add_cell("Input"))
+        self._pad_light = StatusLight(block.add_cell("Input"), width_chars=20)
         self._pad_light.pack(anchor="w", pady=(2, 0))
         address = block.add_cell("Robot address")
         self._host_var = tk.StringVar(value=self._robot_host)
@@ -433,7 +433,7 @@ class StationApp:
         if alive and control:
             self._robot_light.set("ok", "Simulator" if self._connection == "simulator" else f"{self.link.host} ({ip})")
         elif alive or control:
-            self._robot_light.set("warn", "Telemetry only" if alive else "Control link only, no telemetry")
+            self._robot_light.set("warn", "Telemetry only" if alive else "No telemetry")
         else:
             self._robot_light.set("error", "Starting simulator" if self._connection == "simulator"
                                   else f"Searching for {self.link.host}")
