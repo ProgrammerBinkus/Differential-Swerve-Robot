@@ -52,6 +52,8 @@ class SimPlant:
         self._max_speed_mps = 1.0
         self.chassis_rate_rad_s = 0.0   # counter-clockwise
         self.chassis_heading_rad = 0.0
+        self.chassis_vx_mps = 0.0       # robot frame: +x forward, +y left
+        self.chassis_vy_mps = 0.0
 
     def configure(self, config: dict[str, Any]) -> None:
         offset = config["geometry"]["module_offset_m"]
@@ -84,7 +86,9 @@ class SimPlant:
             state.angle_rad += state.rate_rad_s * dt
             wheels.append(SwerveModuleState((a + b) / 2.0 * self._max_speed_mps, Rotation2d(state.angle_rad)))
         if self._kinematics is not None and len(wheels) == len(MODULE_NAMES):
-            self.chassis_rate_rad_s = self._kinematics.toChassisSpeeds(tuple(wheels)).omega
+            speeds = self._kinematics.toChassisSpeeds(tuple(wheels))
+            self.chassis_vx_mps, self.chassis_vy_mps = speeds.vx, speeds.vy
+            self.chassis_rate_rad_s = speeds.omega
             self.chassis_heading_rad += self.chassis_rate_rad_s * dt
         self._write_encoders()
 

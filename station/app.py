@@ -152,6 +152,7 @@ class StationApp:
             keyboard_toggled=self._set_keyboard,
             field_toggled=self._set_field_relative,
             set_field_forward=self._set_field_forward,
+            view_changed=self._set_view,
         ))
         self.mapping_tab = MappingTab(pages, apply=lambda update: self._send_config(update, "mapping"))
         self.tuning_tab = TuningTab(pages, apply=lambda update: self._send_config(update, "tuning"))
@@ -392,6 +393,10 @@ class StationApp:
         if not self.link.send_control({"type": MsgType.SET_FIELD_FORWARD, "tag": "field", "facing_deg": facing_deg}):
             self.terminal.write("station", "Not connected: field forward not set", "WARNING")
 
+    def _set_view(self, view: str) -> None:
+        self.settings.view = view
+        self.settings.save()
+
     def _focus_clicked_area(self, event: tk.Event) -> None:
         if not is_text_input(event.widget):
             self.root.focus_set()
@@ -443,7 +448,12 @@ class StationApp:
         self.drive_tab.show_inputs(vx, vy, omega)
         self.drive_tab.robot_view.update_modules(telemetry["modules"] if telemetry else None)
         imu = telemetry.get("imu") if telemetry else None
-        self.drive_tab.robot_view.update_heading(imu.get("heading") if imu else None)
+        heading = imu.get("heading") if imu else None
+        self.drive_tab.robot_view.update_heading(heading)
+        if self.drive_tab.view == "field":
+            offset = (self._robot_config or {}).get("geometry", {}).get("module_offset_m")
+            self.drive_tab.field_view.update_state(telemetry["modules"] if telemetry else None, heading,
+                                                   telemetry.get("pose") if telemetry else None, offset)
         field_relative = self._robot_config.get("field_relative") if self._robot_config and control else None
         self.drive_tab.show_field(field_relative, connected=alive and control, imu=imu,
                                   update_switch=time.monotonic() >= self._field_pending_until)

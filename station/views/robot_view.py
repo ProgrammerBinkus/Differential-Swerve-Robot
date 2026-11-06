@@ -33,13 +33,13 @@ LAYER_COLORS = {
 _LAYER_WIDTHS = {"battery": 5.0, "motor": 3.0}  # others 3.6, as on the sheet
 
 
-def _heading_vector(angle_deg: float) -> tuple[float, float]:
+def heading_vector(angle_deg: float) -> tuple[float, float]:
     """Screen direction of a robot-frame heading (0 = forward/up, counter-clockwise positive)."""
     rad = math.radians(angle_deg)
     return -math.sin(rad), -math.cos(rad)
 
 
-def _chassis_outline(rim: float = 170, edge: float = 65, steps: int = 24) -> list[float]:
+def chassis_outline(rim: float = 170, edge: float = 65, steps: int = 24) -> list[float]:
     """The CAD outline: a rim around each corner pod, joined by straight sides set in between the pods.
 
     Each pod's arc runs between the two points where its rim circle meets the
@@ -60,7 +60,7 @@ def _chassis_outline(rim: float = 170, edge: float = 65, steps: int = 24) -> lis
     return points
 
 
-def _wheel_outline(cx: float, cy: float, ux: float, uy: float, half_length: float, half_width: float,
+def wheel_outline(cx: float, cy: float, ux: float, uy: float, half_length: float, half_width: float,
                    radius: float = 18, steps: int = 5) -> list[float]:
     """A rounded-corner wheel centered on (cx, cy), its length along the unit vector (ux, uy)."""
     px, py = -uy, ux
@@ -118,7 +118,7 @@ class RobotView(tk.Canvas):
             self.itemconfigure(dial["text"], text="NO HEADING")
             return
         # Field forward in the robot frame is the robot's heading turned back by itself.
-        ux, uy = _heading_vector(-heading_deg)
+        ux, uy = heading_vector(-heading_deg)
         r = _DIAL_RADIUS - 8
         self.coords(dial["arrow"], *self._points(cx - ux * r, cy - uy * r, cx + ux * r, cy + uy * r))
         you_x, you_y = self._to_screen(cx - ux * r, cy - uy * r)
@@ -169,7 +169,7 @@ class RobotView(tk.Canvas):
         mono_font = (theme.MONO, max(8, round(13 * s)))
 
         # Chassis outline, module pods, gears.
-        self.create_polygon(self._points(*_chassis_outline()), smooth=True, fill=theme.PAPER,
+        self.create_polygon(self._points(*chassis_outline()), smooth=True, fill=theme.PAPER,
                             outline=theme.RULE, width=1.5)
         for name, (cx, cy) in MODULE_CENTERS.items():
             r = MODULE_POD_RADIUS
@@ -294,8 +294,8 @@ class RobotView(tk.Canvas):
         cx, cy = MODULE_CENTERS[name]
         live = self._modules.get(name)
         angle = live["angle"] if live and live["angle"] is not None else 0.0
-        ux, uy = _heading_vector(angle)
-        outline = _wheel_outline(cx, cy, ux, uy, _WHEEL_HALF_LENGTH, _WHEEL_HALF_WIDTH)
+        ux, uy = heading_vector(angle)
+        outline = wheel_outline(cx, cy, ux, uy, _WHEEL_HALF_LENGTH, _WHEEL_HALF_WIDTH)
         self.coords(items["wheel"], *self._points(*outline))
 
         if not live:
@@ -307,7 +307,7 @@ class RobotView(tk.Canvas):
 
         self.itemconfigure(items["wheel"], outline=theme.ERROR if live["fault"] else theme.INK)
         if live["target"] is not None:
-            tx, ty = _heading_vector(live["target"])
+            tx, ty = heading_vector(live["target"])
             self.coords(items["target"], *self._points(cx - tx * 135, cy - ty * 135, cx + tx * 135, cy + ty * 135))
             self.itemconfigure(items["target"], state="normal")
         drive = live["drive"]

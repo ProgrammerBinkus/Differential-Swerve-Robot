@@ -11,10 +11,19 @@ from station import theme
 from station.keyboard import KEYMAP, key_label
 from station.parts import WIRE_LAYERS, PartInfo
 from station.settings import StationSettings
+from station.views.field_view import FieldView
 from station.views.robot_view import LAYER_COLORS, RobotView
 from station.widgets import Card, Keycap, NumberRow, Segmented, Terminal, ToggleSwitch
 
 PANEL_TEXT_WIDTH = 270
+
+# Short layer names for the toolbar chips (the part panel's legend has the full ones).
+CHIP_LABELS = {"battery": "Battery", "5v": "5 V", "motor": "Motor leads", "control": "Control", "i2c": "I2C"}
+VIEW_CAPTIONS = {
+    "robot": "Plan view, front at top  ·  wheel = reported angle  ·  dashed = target  ·  arrow = drive",
+    "field": "Field view, away from the driver station at top  ·  wheels and arrows on the field  ·  "
+             "trail = path driven",
+}
 
 # "Robot faces ..." choices for Set field forward, in degrees from "away from the driver station"
 # (counter-clockwise positive, as seen from above).
@@ -31,6 +40,7 @@ class DriveTabActions:
     keyboard_toggled: Callable[[bool], None]
     field_toggled: Callable[[bool], None]
     set_field_forward: Callable[[float], None]
+    view_changed: Callable[[str], None]
 
 
 class LayerChip(tk.Frame):
@@ -93,22 +103,53 @@ class DriveTab(ttk.Frame):
 
         toolbar = tk.Frame(inner, bg=theme.SHEET, padx=12, pady=8)
         toolbar.grid(row=0, column=0, sticky="ew")
-        tk.Label(toolbar, text="LAYERS", bg=theme.SHEET, fg=theme.MUTED, font=theme.FONT_LABEL).pack(
-            side="left", padx=(0, 10))
-        for layer, label in reversed(WIRE_LAYERS):  # power first, as on the sheet
-            LayerChip(toolbar, label, LAYER_COLORS[layer],
+        # Top right: which view. The robot view shows the electronics; the field view only motion.
+        self._view_switch = Segmented(toolbar, (("robot", "Robot"), ("field", "Field")), self._settings.view,
+                                      self._on_view)
+        self._view_switch.pack(side="right")
+        self._layer_bar = tk.Frame(toolbar, bg=theme.SHEET)
+        tk.Label(self._layer_bar, text="LAYERS", bg=theme.SHEET, fg=theme.MUTED, font=theme.FONT_LABEL).pack(
+            side="left", padx=(0, 8))
+        for layer, _label in reversed(WIRE_LAYERS):  # power first, as on the sheet
+            LayerChip(self._layer_bar, CHIP_LABELS[layer], LAYER_COLORS[layer],
                       lambda on, layer=layer: self.robot_view.set_layer_visible(layer, on)).pack(side="left", padx=2)
+        self._field_bar = tk.Frame(toolbar, bg=theme.SHEET)
+        tk.Label(self._field_bar, text="FIELD  ·  GRID 0.5 M", bg=theme.SHEET, fg=theme.MUTED,
+                 font=theme.FONT_LABEL).pack(side="left")
         tk.Frame(inner, height=1, bg=theme.RULE).grid(row=1, column=0, sticky="ew")
 
         self.robot_view = RobotView(inner, on_select=self._actions.select_part)
         self.robot_view.grid(row=2, column=0, sticky="nsew", padx=8, pady=8)
+        self.field_view = FieldView(inner)
+        self.field_view.grid(row=2, column=0, sticky="nsew", padx=8, pady=8)
 
         tk.Frame(inner, height=1, bg=theme.RULE).grid(row=3, column=0, sticky="ew")
-        tk.Label(inner, text="Plan view, front at top  ·  wheel = reported angle  ·  dashed = target  ·  "
-                             "arrow = drive",
-                 bg=theme.SHEET, fg=theme.MUTED, font=theme.FONT_SMALL, anchor="w", padx=12, pady=6).grid(
-            row=4, column=0, sticky="ew")
+        self._caption = tk.Label(inner, text="", bg=theme.SHEET, fg=theme.MUTED, font=theme.FONT_SMALL,
+                                 anchor="w", padx=12, pady=6)
+        self._caption.grid(row=4, column=0, sticky="ew")
+        self.show_view(self._settings.view)
         return frame
+
+    @property
+    def view(self) -> str:
+        return self._view_switch.value
+
+    def show_view(self, view: str) -> None:
+        """Switch between the robot view (electronics, robot-relative) and the field view (motion only)."""
+        self._view_switch.set(view)
+        if view == "field":
+            self._layer_bar.pack_forget()
+            self._field_bar.pack(side="left")
+            tk.Misc.tkraise(self.field_view)  # Canvas.tkraise raises drawn items, not the widget
+        else:
+            self._field_bar.pack_forget()
+            self._layer_bar.pack(side="left")
+            tk.Misc.tkraise(self.robot_view)
+        self._caption.configure(text=VIEW_CAPTIONS[view])
+
+    def _on_view(self, view: str) -> None:
+        self.show_view(view)
+        self._actions.view_changed(view)
 
     def _build_part_panel(self, parent: tk.Misc) -> Card:
         card = Card(parent, padding=16)

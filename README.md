@@ -180,9 +180,18 @@ Safety rules:
 
 ## Driver station tabs
 
-- **Drive:** top-down robot view. Wheels turn to the angle the Pi reports, the dashed line is each
-  module's target angle, and the green arrow shows which way the Pi is rolling the wheel and how hard.
-  Click any part for its role, wiring and live values. Sliders with exact-value boxes set
+- **Drive:** a top-down drawing with a **Robot | Field** switch in its top-right corner.
+  - **Robot view:** the robot's own frame, with the electronics and harnesses. Wheels turn to the angle
+    the Pi reports, the dashed line is each module's target angle, and the green arrow shows which way
+    the Pi is rolling the wheel and how hard. Click any part for its role, wiring and live values.
+  - **Field view:** the robot moving over a 0.5 m field grid, with "away from the driver station" at
+    the top. It shows only the chassis, the wheels at their angle on the field, their motion vectors,
+    and a trail of the path driven, without the electronics. Scroll to zoom from 2 to 20 m across.
+    Position comes from the simulator. The real robot has no drive encoders, so it can't measure where
+    it is; the field view then shows it at the center, turning with its true heading.
+    *Set field forward* starts a fresh field at the robot.
+
+  The view you pick is remembered. Sliders with exact-value boxes set
   sensitivity and deadzone for each stick. The terminal shows everything the Pi sends (tick
   *Show telemetry* for the live data stream).
 - **Mapping:** which motors, encoder and invert flags each module uses, which H-bridge channel each

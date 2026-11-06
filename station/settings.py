@@ -21,6 +21,7 @@ LEGACY_SETTINGS_PATH = Path(__file__).resolve().parent.parent / "station_setting
 
 
 CONNECTIONS = ("robot", "simulator")
+VIEWS = ("robot", "field")
 
 # Allowed range of each number, matching the sliders.
 RANGES = {
@@ -40,6 +41,7 @@ class StationSettings:
     turn_deadzone: float = 8.0
     keyboard_control: bool = False    # drive with W A S D / arrows and J L
     connection: str = "robot"         # "robot" or "simulator" (the built-in one)
+    view: str = "robot"               # drawing on the Drive tab: "robot" (electronics) or "field" (motion)
 
     @classmethod
     def load(cls, path: Path = SETTINGS_PATH) -> "StationSettings":
@@ -64,6 +66,9 @@ class StationSettings:
             elif field.name == "connection":
                 if value in CONNECTIONS:
                     settings.connection = value
+            elif field.name == "view":
+                if value in VIEWS:
+                    settings.view = value
             elif isinstance(default, str) and isinstance(value, str) and value.strip():
                 setattr(settings, field.name, value.strip())
             elif isinstance(default, float) and isinstance(value, (int, float)) and not isinstance(value, bool) \

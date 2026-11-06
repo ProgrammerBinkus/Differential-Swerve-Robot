@@ -36,6 +36,13 @@ class Hardware:
     def simulated(self) -> bool:
         return self._plant is not None
 
+    @property
+    def chassis_velocity(self) -> Optional[tuple[float, float]]:
+        """The simulated chassis' (vx, vy) in m/s, robot frame. ``None`` on the real robot: it has no drive encoders."""
+        if self._plant is None:
+            return None
+        return self._plant.chassis_vx_mps, self._plant.chassis_vy_mps
+
     def output_for_motor(self, config: dict[str, Any], motor_id: str) -> MotorOutput:
         return self.outputs[".".join(motor_channel(config, motor_id))]
 

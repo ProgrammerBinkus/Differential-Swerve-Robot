@@ -77,6 +77,10 @@ class Robot:
         self._mode = Mode.DISABLED
         self._needs_disabled_command = True  # see the class docstring
         self._field_heading_ok = True         # for logging changes in field-relative availability
+        # Field position of the simulated robot, in the same frame as field-relative drive
+        # (+x away from the driver station). Reset by Set field forward, which bumps the epoch.
+        self._pose_x = self._pose_y = 0.0
+        self._pose_epoch = 0
         self._command = DriveCommand()
         self._command_time = -math.inf
         self._zero_presses: int | None = None
@@ -119,6 +123,7 @@ class Robot:
         self._hardware.step(dt)
         self._drivetrain.read_sensors()
         self._hardware.imu.update(dt)
+        self._track_pose(dt)
         self._handle_control_messages()
 
         command = self._receiver.poll(now)
@@ -143,6 +148,17 @@ class Robot:
             vx, vy, omega = (limiter.calculate(target, dt) for limiter, target in
                              zip(self._limiters, (self._command.vx, self._command.vy, self._command.omega)))
             self._drivetrain.drive(vx, vy, omega, self._field_heading())
+
+    def _track_pose(self, dt: float) -> None:
+        """Integrate the simulated robot's field position (simulator only)."""
+        velocity = self._hardware.chassis_velocity
+        heading = self._hardware.imu.heading_deg
+        if velocity is None or heading is None:
+            return
+        vx, vy = velocity
+        h = math.radians(heading)
+        self._pose_x += (vx * math.cos(h) - vy * math.sin(h)) * dt
+        self._pose_y += (vx * math.sin(h) + vy * math.cos(h)) * dt
 
     def _field_heading(self) -> float | None:
         """The heading to drive field-relative with, or None for robot-relative."""
@@ -296,6 +312,8 @@ class Robot:
         imu = self._hardware.imu
         if not imu.set_field_forward(float(facing)):
             return result(False, f"Can't set field forward: IMU {imu.status}")
+        self._pose_x = self._pose_y = 0.0   # a new field frame starts at the robot
+        self._pose_epoch += 1
         log.info("Field forward set: the robot faces %+.0f° from away-from-the-driver", facing)
         return result(True, "Field forward set")
 
@@ -327,6 +345,9 @@ class Robot:
             "simulated": self._hardware.simulated,
             "modules": self._drivetrain.telemetry(),
             "imu": self._hardware.imu.telemetry(),
+            # Field position: only the simulator knows it (the real robot has no drive encoders).
+            "pose": ({"x": round(self._pose_x, 3), "y": round(self._pose_y, 3), "epoch": self._pose_epoch}
+                     if self._hardware.simulated else None),
         })
         self._loop_ms_max = 0.0
 
