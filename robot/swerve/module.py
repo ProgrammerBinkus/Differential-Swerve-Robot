@@ -155,6 +155,13 @@ class DiffSwerveModule:
         self._motor_b.stop()
         self._pid.reset()
 
+    def brake(self) -> None:
+        """Brake both motors: the wheel slows down and the steering angle stays where it is."""
+        self.drive = self.steer = 0.0
+        self._motor_a.brake()
+        self._motor_b.brake()
+        self._pid.reset()
+
     def hold_current_angle(self) -> None:
         """Aim at wherever the wheel is now (used on enable, so nothing jumps)."""
         if self._tracker.initialized:

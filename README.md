@@ -171,6 +171,10 @@ Safety rules:
 
 - The robot only drives while the station says enabled and commands keep arriving. No command for
   250 ms disables it (watchdog).
+- Disabling, whether from the station, the space bar or a lost link, **brakes** every motor for 15 seconds:
+  the wheels slow down and the steering angles stay where they are. Then the motors are released, so you
+  can push the robot and turn the wheels by hand. With this gearing the braking is gentle at speed:
+  expect a fast robot to take several seconds to stop, about half the distance it would coast.
 - After start-up or a watchdog trip the robot stays disabled until you enable again from the station,
   even if the link comes back with the station still set to enabled.
 - The station can only enable with the robot connected and an input available (a controller, or

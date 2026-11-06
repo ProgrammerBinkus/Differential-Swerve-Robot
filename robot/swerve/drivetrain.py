@@ -103,8 +103,14 @@ class Drivetrain:
                 module.stop()
 
     def stop(self) -> None:
+        """Coast every motor."""
         for module in self.modules:
             module.stop()
+
+    def brake(self) -> None:
+        """Brake every motor (wheels slow down, steering angles stay)."""
+        for module in self.modules:
+            module.brake()
 
     def hold_current_angles(self) -> None:
         for module in self.modules:

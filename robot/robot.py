@@ -23,7 +23,7 @@ log = logging.getLogger(__name__)
 
 
 class Mode(enum.Enum):
-    DISABLED = "disabled"   # motors coast
+    DISABLED = "disabled"   # motors brake for BRAKE_HOLD_S after being disabled, then coast
     DRIVE = "drive"         # following the driver's sticks
     HOMING = "homing"       # "Return to Zero": steering every wheel to 0 degrees
 
@@ -38,6 +38,10 @@ class Robot:
     * After start-up or a watchdog trip, the robot will not enable until the
       station has sent "disabled" at least once, so a station that was left
       enabled cannot start the robot moving the moment the link comes back.
+    * Disabling (from the station, or by the watchdog) brakes every motor for
+      ``BRAKE_HOLD_S``, so a fast robot slows down instead of coasting far, and
+      the steering angles stay put. After that the motors coast, so the robot
+      can be pushed and the wheels turned by hand (for Swerve Set Zero).
     * Mapping changes and Swerve Set Zero are only accepted while disabled.
     * Field-relative drive needs a calibrated IMU. Without one (missing,
       calibrating, or failed) the robot drives robot-relative and says so.
@@ -46,6 +50,9 @@ class Robot:
 
     HOMING_TIMEOUT_S = 4.0
     SHUTDOWN_HOMING_S = 2.5
+    # Long enough to stop from full speed: with this gearing, braking is about twice as strong as
+    # rolling resistance alone, so a robot at ~9 m/s takes roughly 10 s to stop on asphalt.
+    BRAKE_HOLD_S = 15.0
 
     def __init__(self, config_path: Path, simulate: bool, udp_port: int = UDP_PORT,
                  tcp_port: int = TCP_PORT) -> None:
@@ -86,6 +93,7 @@ class Robot:
         self._zero_presses: int | None = None
         self._home_presses: int | None = None
         self._homing_started = 0.0
+        self._brake_until = -math.inf   # braking after a disable lasts until this time
         self._telemetry_seq = 0
         self._loop_ms = 0.0
         self._loop_ms_max = 0.0
@@ -138,10 +146,13 @@ class Robot:
             # The station may restart and reset its counters; resync on its next command.
             self._zero_presses = self._home_presses = None
 
-        self._update_mode(fresh and self._command.enabled and not self._needs_disabled_command, fresh)
+        self._update_mode(fresh and self._command.enabled and not self._needs_disabled_command, fresh, now)
 
         if self._mode is Mode.DISABLED:
-            self._drivetrain.stop()
+            if self.braking(now):
+                self._drivetrain.brake()
+            else:
+                self._drivetrain.stop()
         elif self._mode is Mode.HOMING:
             self._run_homing(now)
         else:
@@ -174,19 +185,24 @@ class Robot:
                 log.info("Field-relative drive active")
         return heading
 
-    def _update_mode(self, want_enabled: bool, fresh: bool) -> None:
+    def braking(self, now: float) -> bool:
+        return self._mode is Mode.DISABLED and now < self._brake_until
+
+    def _update_mode(self, want_enabled: bool, fresh: bool, now: float) -> None:
         if not want_enabled:
             if self._mode is not Mode.DISABLED:
                 if fresh:
-                    log.info("Disabled by the driver station")
+                    log.info("Disabled by the driver station: braking")
                 else:
-                    log.warning("Disabled: no commands for %.0f ms (watchdog). Enable again from the "
+                    log.warning("Disabled: no commands for %.0f ms (watchdog). Braking. Enable again from the "
                                 "driver station.", self.config["watchdog_s"] * 1000)
                     self._needs_disabled_command = True
                 self._mode = Mode.DISABLED
-                self._drivetrain.stop()
+                self._brake_until = now + self.BRAKE_HOLD_S
+                self._drivetrain.brake()
         elif self._mode is Mode.DISABLED:
             log.info("Enabled")
+            self._brake_until = -math.inf
             self._drivetrain.hold_current_angles()
             for limiter in self._limiters:
                 limiter.reset()
@@ -338,6 +354,7 @@ class Robot:
             "type": MsgType.TELEMETRY,
             "seq": self._telemetry_seq,
             "mode": self._mode.value,
+            "braking": self.braking(time.perf_counter()),
             "loop_ms": round(self._loop_ms, 3),
             "loop_ms_max": round(self._loop_ms_max, 3),
             "field_relative": self.config["field_relative"],

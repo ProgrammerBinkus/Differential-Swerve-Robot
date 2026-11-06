@@ -14,9 +14,11 @@ log = logging.getLogger(__name__)
 class MotorOutput(Protocol):
     name: str
     output: float  # last command, -1 to 1
+    braking: bool
 
     def set(self, command: float) -> None: ...
-    def stop(self) -> None: ...
+    def stop(self) -> None: ...   # coast
+    def brake(self) -> None: ...  # short the motor leads
     def close(self) -> None: ...
 
 
@@ -48,6 +50,7 @@ class HBridgeChannel:
         self._direction = direction
         self._reverse = False
         self._duty = 0.0
+        self.braking = False
 
     @classmethod
     def open(cls, name: str, spec: dict[str, Any], frequency_hz: float) -> "HBridgeChannel":
@@ -89,10 +92,26 @@ class HBridgeChannel:
             self._pwm.duty_cycle = duty
             self._duty = duty
         self.output = command
+        self.braking = False
 
     def stop(self) -> None:
-        """Coast (both inputs low)."""
+        """Coast (both inputs low): the motor spins freely."""
         self.set(0.0)
+
+    def brake(self) -> None:
+        """Brake (both inputs high): the chip shorts the motor leads, so the motor resists turning.
+
+        The stopping force grows with speed; at a standstill it only makes the
+        wheel stiff to turn by hand.
+        """
+        if not self._reverse:
+            self._direction.write(True)
+            self._reverse = True
+        if self._duty != 1.0:
+            self._pwm.duty_cycle = 1.0
+            self._duty = 1.0
+        self.output = 0.0
+        self.braking = True
 
     def close(self) -> None:
         """Stop, then release both pins. Never raises: it runs during shutdown."""
@@ -109,12 +128,19 @@ class SimMotorOutput:
     def __init__(self, name: str) -> None:
         self.name = name
         self.output = 0.0
+        self.braking = False
 
     def set(self, command: float) -> None:
         self.output = _clamp_unit(command)
+        self.braking = False
 
     def stop(self) -> None:
         self.output = 0.0
+        self.braking = False
+
+    def brake(self) -> None:
+        self.output = 0.0
+        self.braking = True
 
     def close(self) -> None:
         self.stop()

@@ -69,3 +69,34 @@ def test_mapping_change_rejected_while_enabled(robot):
 def test_config_message_carries_the_protocol_version(robot):
     from common.protocol import PROTOCOL_VERSION
     assert robot._config_message()["protocol"] == PROTOCOL_VERSION
+
+
+def outputs(robot):
+    return robot._hardware.outputs.values()
+
+
+def test_disable_brakes_then_coasts(robot):
+    run(robot, 0.05, DriveCommand(seq=1, enabled=False))
+    assert not any(o.braking for o in outputs(robot))          # never enabled: coasting, not braking
+    run(robot, 0.2, DriveCommand(seq=2, enabled=True, vx=0.5))
+    run(robot, 0.05, DriveCommand(seq=3, enabled=False))       # driver disables
+    assert all(o.braking for o in outputs(robot))
+    run(robot, Robot.BRAKE_HOLD_S + 0.1, DriveCommand(seq=4, enabled=False))
+    assert not any(o.braking for o in outputs(robot))          # released so the wheels turn by hand
+
+
+def test_watchdog_trip_brakes(robot):
+    run(robot, 0.05, DriveCommand(seq=1, enabled=False))
+    run(robot, 0.2, DriveCommand(seq=2, enabled=True, vx=0.5))
+    run(robot, 0.5)                                            # link lost
+    assert robot._mode is Mode.DISABLED
+    assert all(o.braking for o in outputs(robot))
+
+
+def test_braking_keeps_the_steering_angles(robot):
+    run(robot, 0.05, DriveCommand(seq=1, enabled=False))
+    run(robot, 1.0, DriveCommand(seq=2, enabled=True, vy=0.5))  # wheels sideways
+    before = [m.angle_rad for m in robot._drivetrain.modules]
+    run(robot, 1.0, DriveCommand(seq=3, enabled=False))
+    after = [m.angle_rad for m in robot._drivetrain.modules]
+    assert after == pytest.approx(before, abs=0.05)

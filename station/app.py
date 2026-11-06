@@ -454,7 +454,8 @@ class StationApp:
         telemetry = self._telemetry if alive else None
         mode = "Robot not connected"
         if telemetry:
-            mode = f"Robot mode: {telemetry['mode']}" + ("  ·  simulated hardware" if telemetry.get("simulated") else "")
+            mode = (f"Robot mode: {telemetry['mode']}" + ("  ·  braking" if telemetry.get("braking") else "")
+                    + ("  ·  simulated hardware" if telemetry.get("simulated") else ""))
         self.drive_tab.show_state(self._enabled, alive and self._has_input, mode, alive)
         self.drive_tab.show_inputs(vx, vy, omega)
         self.drive_tab.robot_view.update_modules(telemetry["modules"] if telemetry else None)
