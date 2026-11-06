@@ -31,16 +31,9 @@ def test_opposite_keys_cancel():
     assert sticks_from_actions({"forward", "back", "turn_left", "turn_right"}) == (0.0, 0.0, 0.0)
 
 
-@pytest.fixture(scope="module")
-def root():
-    # One window for the module: creating many Tk instances in a row is flaky on Windows.
-    try:
-        window = tk.Tk()
-    except tk.TclError:
-        pytest.skip("no display")
-    window.withdraw()
-    yield window
-    window.destroy()
+@pytest.fixture
+def root(tk_root):
+    return tk_root
 
 
 def key(widget, keysym):

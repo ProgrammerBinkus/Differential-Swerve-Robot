@@ -1,7 +1,6 @@
 """The simulated field position and the field view's geometry."""
 
 import json
-import tkinter as tk
 
 import pytest
 
@@ -67,17 +66,6 @@ def test_view_setting_is_validated(tmp_path):
     assert StationSettings.load(path).view == "field"
     path.write_text(json.dumps({"view": "map"}))
     assert StationSettings.load(path).view == "robot"
-
-
-@pytest.fixture(scope="module")
-def tk_root():
-    try:
-        window = tk.Tk()
-    except tk.TclError:
-        pytest.skip("no display")
-    window.withdraw()
-    yield window
-    window.destroy()
 
 
 def test_trail_points_expire_after_ten_seconds(tk_root):

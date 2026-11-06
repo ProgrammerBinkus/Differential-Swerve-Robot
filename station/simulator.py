@@ -11,6 +11,7 @@ import logging
 import socket
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import IO, Optional
 
@@ -48,6 +49,8 @@ def simulator_command(config_path: Path) -> list[str]:
 
 class LocalSimulator:
     """Starts, watches and stops the simulator child process."""
+
+    PORT_RELEASE_TIMEOUT_S = 0.5
 
     def __init__(self, config_path: Path = SIMULATOR_CONFIG_PATH) -> None:
         self._config_path = config_path
@@ -101,6 +104,11 @@ class LocalSimulator:
                 self._process.kill()
             log.info("Stopped the simulator")
         self._cleanup()
+        # Closing the job ends the simulator's own child too, a moment later. Wait (briefly) for it to
+        # let go of the robot ports, so an immediate restart doesn't mistake it for a running simulator.
+        deadline = time.monotonic() + self.PORT_RELEASE_TIMEOUT_S
+        while robot_ports_in_use() and time.monotonic() < deadline:
+            time.sleep(0.02)
 
     def _cleanup(self) -> None:
         if self._job is not None:

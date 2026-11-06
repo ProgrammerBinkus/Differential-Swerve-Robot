@@ -7,7 +7,8 @@ control loop, and a Windows laptop runs a dark-mode driver station that reads an
 main.py                 launcher: `python main.py robot` / `python main.py station`
 common/                 shared by both sides
   config.py             config schema, defaults (from wiring sheet E-01) and validation
-  protocol.py           UDP/TCP message format
+  protocol.py           UDP/TCP message format and protocol version
+  timing.py             keeps Windows from throttling the control loops
 robot/                  runs on the Orange Pi
   robot.py              200 Hz main loop, watchdog, modes, config updates
   swerve/               steering-angle tracking, differential mix, module, drivetrain
@@ -15,9 +16,11 @@ robot/                  runs on the Orange Pi
   net.py                UDP command receiver + TCP control server
 station/                runs on the laptop
   app.py                window, 50 Hz tick, safety rules
-  views/                Drive, Mapping and Tuning tabs, top-down robot view
+  views/                Drive, Mapping and Tuning tabs; robot view (electronics) and field view (motion)
   gamepad.py            Xbox controller (pygame)
-  link.py               network link to the robot
+  keyboard.py           keyboard driving (W A S D / arrows, J L)
+  link.py               network link to the robot; steady 50 Hz command sender
+  simulator.py          the built-in simulator behind the Simulator connection mode
   windows.py            logging, crash reports, single instance, taskbar identity
 packaging/              Windows app build (PyInstaller spec, build script, installer script, icon)
 tools/                  bring-up tools for the Pi
