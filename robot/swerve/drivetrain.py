@@ -55,8 +55,11 @@ class Drivetrain:
 
     def apply_tuning(self, tuning: dict[str, float]) -> None:
         self.max_speed_mps = tuning["max_speed_mps"]
-        # Full rotation stick spins the robot so each wheel runs at full speed.
-        self.max_omega_rad_s = self.max_speed_mps / self._module_radius_m
+        # Full rotation stick asks for the configured turn rate, but never more than the wheels can
+        # give (every wheel at full speed around the center). Without the cap a fast robot would be
+        # asked to spin thousands of degrees a second, far past what the gyro can measure.
+        self.max_omega_rad_s = min(self.max_speed_mps / self._module_radius_m,
+                                   math.radians(tuning["max_turn_dps"]))
         self._home_tolerance_rad = math.radians(tuning["home_tolerance_deg"])
         for module in self.modules:
             module.apply_tuning(tuning)

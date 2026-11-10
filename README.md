@@ -41,6 +41,10 @@ station's robot view. This is a quarter turn from wiring sheet E-01, so labels c
 | BR module (M4, M5) | **FR** |
 | BL module (M6, M7) | **BR** |
 
+**Wiring, pin by pin:** [Swerve Pin Wiring, sheet E-02](https://claude.ai/artifact/Wmyj4Z3nRD5TiJ9mj6D8z9) uses the
+software names above and shows every pin of each H-bridge, encoder and the MPU-6050, the 40-pin header
+map and a schedule of every wire. Its pin numbers are the defaults in `common/config.py`.
+
 Motor labels M1–M8 and all header pins are unchanged. +x is forward, +y is left, and angles are
 counter-clockwise positive. A steering angle of 0° means the wheel points forward.
 
@@ -203,7 +207,10 @@ Safety rules:
   *Show telemetry* for the live data stream).
 - **Mapping:** which motors, encoder and invert flags each module uses, which H-bridge channel each
   motor is plugged into, and which I2C bus each encoder is on.
-- **Tuning:** steering PID, steer output limit, max wheel speed, acceleration limit and more.
+- **Tuning:** steering PID, steer output limit, max wheel speed (up to 10 m/s), max turn rate,
+  acceleration limit and more. Full turn stick asks for the max turn rate (360°/s by default), or for
+  as much as the wheels can give if that is less. The gyro reads up to 2000°/s, so the limit stops at
+  1440°/s.
 
 **Everything saves as you change it**, with no Apply button:
 
@@ -269,5 +276,6 @@ the configuration, configuration changes and the Pi's log lines.
 
 ## Still to do
 
-- **Measure:** max wheel speed (Tuning tab) and `geometry.module_offset_m` in `robot_config.json`.
+- **Measure:** max wheel speed (Tuning tab). The wheel centers are set to 110 mm from the robot's
+  center in x and y (`geometry.module_offset_m` in `robot_config.json`), from the CAD.
 - **Tune** the steering PID on the real robot (order is listed on the Tuning tab).

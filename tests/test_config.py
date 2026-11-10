@@ -38,6 +38,28 @@ def test_tuning_out_of_range_is_rejected():
     assert any("Steer kP" in error for error in validate_config(config))
 
 
+def test_wheel_centers_are_110_mm_from_the_robot_center():
+    assert default_config()["geometry"]["module_offset_m"] == 0.11
+
+
+def test_top_speed_may_be_set_up_to_10_mps():
+    assert validate_config(merge_config(default_config(), {"tuning": {"max_speed_mps": 10.0}})) == []
+    too_fast = merge_config(default_config(), {"tuning": {"max_speed_mps": 10.5}})
+    assert any("Max wheel speed" in error for error in validate_config(too_fast))
+
+
+def test_a_config_saved_before_the_turn_rate_limit_existed_still_loads(tmp_path):
+    import json
+
+    from robot.config_store import ConfigStore
+
+    old = default_config()
+    del old["tuning"]["max_turn_dps"]
+    path = tmp_path / "robot_config.json"
+    path.write_text(json.dumps(old), encoding="utf-8")
+    assert ConfigStore(path).load()["tuning"]["max_turn_dps"] == 360.0
+
+
 def test_hardware_wiring_cannot_be_changed_remotely():
     with pytest.raises(ConfigError):
         merge_config(default_config(), {"hbridges": {}})

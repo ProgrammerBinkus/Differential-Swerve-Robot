@@ -76,8 +76,10 @@ TUNING_FIELDS = (
                 "Largest steer command. Also caps steering speed so encoder wraps are never missed."),
     TuningField("steer_coupling", "Steer-to-drive coupling", -0.5, 0.5, 0.0, "", 0.005,
                 "Subtracts k x steer from drive if steering alone makes the wheel creep."),
-    TuningField("max_speed_mps", "Max wheel speed", 0.1, 5.0, 1.0, "m/s", 0.01,
+    TuningField("max_speed_mps", "Max wheel speed", 0.1, 10.0, 1.0, "m/s", 0.01,
                 "Measured wheel speed at 100% drive. Full stick maps to this."),
+    TuningField("max_turn_dps", "Max turn rate", 30.0, 1440.0, 360.0, "°/s", 1.0,
+                "Full turn stick spins the robot this fast, or as fast as the wheels allow if that is less."),
     TuningField("accel_limit", "Acceleration limit", 0.5, 20.0, 4.0, "/s", 0.1,
                 "How fast commands may change, in full-scale per second."),
     TuningField("hold_threshold", "Hold-angle threshold", 0.0, 0.2, 0.02, "", 0.005,
@@ -152,9 +154,9 @@ _DEFAULT_CONFIG: dict[str, Any] = {
     # by hand: the heading should go up. If it goes down, the board is upside down: set invert_yaw.
     "imu": {"bus": "/dev/i2c-0", "address": 0x68, "invert_yaw": False, "sda_pin": 3, "scl_pin": 5},
     "tuning": {field.key: field.default for field in TUNING_FIELDS},
-    # Distance from the robot's center to each module along x and along y.
-    # Only the shape matters for a square robot, but measure it anyway.
-    "geometry": {"module_offset_m": 0.12},
+    # Distance from the robot's center to each wheel's center along x and along y (110 mm, from the CAD).
+    # It sets how fast the wheels must run for a given turn rate.
+    "geometry": {"module_offset_m": 0.11},
     "loop_hz": 200,
     "pwm_frequency_hz": 20000,
     "watchdog_s": 0.25,

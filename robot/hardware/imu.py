@@ -123,7 +123,9 @@ class Mpu6050:
     ACCEL_XOUT_H = 0x3B     # 14 bytes: accel x, y, z, temperature, gyro x, y, z (big-endian, signed)
     GYRO_ZOUT_H = 0x47
 
-    GYRO_LSB_PER_DPS = 65.5     # +/-500 deg/s range
+    # +/-2000 deg/s, the widest range: the turn-rate limit goes up to 1440 deg/s and a gyro that
+    # hits its limit silently loses heading. One count is 0.06 deg/s, below the chip's own noise.
+    GYRO_LSB_PER_DPS = 16.4
     ACCEL_LSB_PER_G = 16384.0   # +/-2 g range
     # Chips sold as MPU-6050 boards also include MPU-6500/9250 clones with other IDs; all share these registers.
     KNOWN_IDS = {0x68: "MPU-6050", 0x70: "MPU-6500", 0x71: "MPU-9250", 0x73: "MPU-9255", 0x98: "clone"}
@@ -158,7 +160,7 @@ class Mpu6050:
         self._write(self.PWR_MGMT_1, 0x01)    # wake up, clock from the X gyro (steadier than the internal one)
         self._write(self.CONFIG, 0x03)        # digital low-pass filter ~44 Hz: smooths vibration
         self._write(self.SMPLRT_DIV, 0x04)    # 1 kHz / (1 + 4) = 200 Hz, matching the control loop
-        self._write(self.GYRO_CONFIG, 0x08)   # +/-500 deg/s
+        self._write(self.GYRO_CONFIG, 0x18)   # +/-2000 deg/s
         self._write(self.ACCEL_CONFIG, 0x00)  # +/-2 g
 
     def read_rate_dps(self) -> float:

@@ -50,6 +50,32 @@ def test_rotation_points_wheels_tangentially(rig):
         assert facing(result[name], expected), (name, result[name])
 
 
+def test_full_turn_stick_is_capped_at_the_turn_rate_limit():
+    config = default_config()
+    radius = math.hypot(0.11, 0.11)
+    config["tuning"].update(max_speed_mps=10.0, max_turn_dps=360.0)
+    fast = Drivetrain.from_config(open_hardware(config, simulate=True), config)
+    assert math.degrees(fast.max_omega_rad_s) == pytest.approx(360.0)   # not the 3,680 deg/s the wheels could do
+    config["tuning"].update(max_speed_mps=0.5)
+    slow = Drivetrain.from_config(open_hardware(config, simulate=True), config)
+    assert slow.max_omega_rad_s == pytest.approx(0.5 / radius)          # wheels are the limit: about 184 deg/s
+
+
+def test_spinning_at_top_speed_stays_inside_the_gyro_range():
+    config = default_config()
+    config["tuning"].update(max_speed_mps=10.0, max_turn_dps=1440.0, steer_limit=1.0)
+    hardware = open_hardware(config, simulate=True)
+    drivetrain = Drivetrain.from_config(hardware, config)
+    drivetrain.read_sensors()
+    fastest = 0.0
+    for _ in range(int(3.0 / DT)):
+        hardware.step(DT)
+        drivetrain.read_sensors()
+        drivetrain.drive(0.0, 0.0, 1.0)
+        fastest = max(fastest, abs(hardware.imu._source.read_rate_dps()))
+    assert 1300.0 < fastest < 2000.0        # reaches the limit it was given, below the gyro's +/-2000
+
+
 def test_driving_straight_runs_both_motors_together_once_aligned(rig):
     run(rig, 2.0, lambda d: d.drive(0.5, 0.0, 0.0))
     for module in rig[1].modules:

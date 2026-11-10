@@ -26,7 +26,7 @@ TCP_PORT = 5801
 
 # Bump when messages or the config change in a way the other side must know about.
 # The robot sends it with its config; the station warns when it differs (update both to the same version).
-PROTOCOL_VERSION = 3
+PROTOCOL_VERSION = 4
 
 COMMAND_RATE_HZ = 50
 TELEMETRY_RATE_HZ = 20

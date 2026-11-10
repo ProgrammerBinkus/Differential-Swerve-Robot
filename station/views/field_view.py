@@ -57,7 +57,7 @@ class FieldView(tk.Canvas):
         self._modules: dict[str, Any] = {}
         self._heading: Optional[float] = None
         self._pose: Optional[tuple[float, float]] = None
-        self._module_offset_m = 0.12
+        self._module_offset_m = 0.11
         self._imu_status: Optional[str] = None
         self.bind("<Configure>", lambda _e: self._redraw())
         self.bind("<MouseWheel>", self._on_wheel)
