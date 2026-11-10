@@ -3,6 +3,9 @@
 Positions come from the wiring diagram (sheet E-01), rotated a quarter turn so
 the Orange Pi is at the rear (bottom of the screen) and the front is at the
 top. Coordinates are in a 1000 x 1000 box around the chassis, +y down.
+
+The IMU is the exception: it has since moved from the left side (where sheet
+E-01 shows it) to between HB2 and the power hub. Its wiring is unchanged.
 """
 
 from __future__ import annotations
@@ -74,7 +77,8 @@ PARTS: tuple[Part, ...] = (
          "Between the battery and the power hub",
          "Cuts all power. Press Return to Zero (+) before switching off, so the wheels are parked at zero "
          "for the next start-up."),
-    Part("mpu", "imu", "IMU", 254, 500, 56, 90, "MPU-6050 (GY-521)", "I2C0 · address 0x68",
+    Part("mpu", "imu", "IMU", 500, 235, 56, 44, "MPU-6050 (GY-521)",
+         "I2C0 · address 0x68 · between HB2 and the power hub",
          "Shares I2C0 with encoder E1. Its gyro gives the heading for field-relative drive; it has no "
          "compass, so set field forward from the Drive tab, and again if the heading drifts."),
     _hbridge("HB1", 160, 500), _hbridge("HB2", 500, 155),
@@ -112,16 +116,16 @@ WIRES: tuple[Wire, ...] = (
     Wire("W1", "battery", ("battery", "xt60"), ((575, 500), (401, 500))),
     Wire("W2", "battery", ("xt60", "switch", "pdh"), ((388, 476), (388, 310), (450, 310))),
     Wire("W3", "battery", ("pdh", "HB1"), ((450, 295), (220, 295), (220, 488), (190, 488))),
-    Wire("W4", "battery", ("pdh", "HB2"), ((490, 285), (490, 185))),
+    Wire("W4", "battery", ("pdh", "HB2"), ((460, 285), (460, 172), (470, 172))),  # left of the IMU
     Wire("W5", "battery", ("pdh", "HB3"), ((540, 295), (800, 295), (800, 488), (815, 488))),
     Wire("W6", "battery", ("pdh", "HB4"), ((450, 360), (365, 360), (365, 804), (486, 804), (486, 830))),
     Wire("W7", "5v", ("pdh", "pi"), ((520, 375), (520, 560))),
     Wire("W8", "control", ("pi", "HB1"), ((420, 600), (205, 600), (205, 512), (190, 512))),
-    Wire("W9", "control", ("pi", "HB2"), ((552, 560), (552, 210), (510, 210), (510, 185))),
+    Wire("W9", "control", ("pi", "HB2"), ((552, 560), (552, 200), (540, 200), (540, 172), (530, 172))),  # right of it
     Wire("W10", "control", ("pi", "HB3"), ((590, 700), (795, 700), (795, 512), (815, 512))),
     Wire("W11", "control", ("pi", "HB4"), ((512, 785), (512, 830))),
     Wire("W12", "i2c", ("pi", "E1", "mpu"), ((420, 760), (330, 760), (330, 694)),
-         branch=((330, 760), (254, 760), (254, 545))),
+         branch=((430, 560), (430, 235), (472, 235))),  # same header pins (3 and 5), run forward to the IMU
     Wire("W13", "i2c", ("pi", "E2"), ((420, 570), (330, 570), (330, 344))),
     Wire("W14", "i2c", ("pi", "E3"), ((563, 560), (563, 400), (680, 400), (680, 344))),
     Wire("W15", "i2c", ("pi", "E4"), ((590, 640), (680, 640), (680, 656))),
