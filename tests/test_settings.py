@@ -9,7 +9,7 @@ def test_out_of_range_values_are_clamped(tmp_path):
     settings = StationSettings.load(path)
     assert settings.drive_sensitivity == 0.0
     assert settings.turn_deadzone == 50.0
-    assert settings.robot_host == "orangepi.local"
+    assert settings.robot_host == "orangepi4pro.local"
 
 
 def test_unreadable_file_gives_defaults(tmp_path):

@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any, Protocol
 
 from robot.hardware.errors import HardwareError
 from robot.hardware.gpio import open_output
 
 log = logging.getLogger(__name__)
+
+PERMISSION_WAIT_S = 2.0  # how long a new PWM channel may take to become writable
 
 
 class MotorOutput(Protocol):
@@ -66,11 +69,21 @@ class HBridgeChannel:
                 f"Is the PWM overlay enabled? {exc}"
             ) from exc
         try:
-            if pwm.period_ns > 0:
-                pwm.duty_cycle_ns = 0  # the kernel rejects a period shorter than the current duty
-            pwm.frequency = frequency_hz
-            pwm.duty_cycle = 0.0
-            pwm.enable()
+            # A freshly exported channel's files belong to root until udev hands them to the gpio
+            # group (/usr/local/sbin/robot-pwm-perms on the Pi), a few milliseconds later.
+            deadline = time.monotonic() + PERMISSION_WAIT_S
+            while True:
+                try:
+                    if pwm.period_ns > 0:
+                        pwm.duty_cycle_ns = 0  # the kernel rejects a period shorter than the current duty
+                    pwm.frequency = frequency_hz
+                    pwm.duty_cycle = 0.0
+                    pwm.enable()
+                    break
+                except PermissionError:
+                    if time.monotonic() > deadline:
+                        raise
+                    time.sleep(0.05)
             direction = open_output(spec["dir"])
         except Exception:
             try:

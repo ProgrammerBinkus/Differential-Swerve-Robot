@@ -131,6 +131,29 @@ def test_channel_opens_at_20_khz_with_the_motor_coasting(board):
     assert board.gpios["PD1"].direction == "low"                    # IN2 low + IN1 0% = coast
 
 
+def test_channel_waits_for_udev_to_make_a_new_pwm_writable(board, monkeypatch):
+    import robot.hardware.motor as motor_module
+
+    refusals = [2]
+
+    def enable_after_two_refusals(self):
+        if refusals[0]:
+            refusals[0] -= 1
+            raise PermissionError(13, "Permission denied", "/sys/class/pwm/pwmchip20/pwm2/enable")
+        self.enabled = True
+
+    monkeypatch.setattr(sys.modules["periphery"].PWM, "enable", enable_after_two_refusals)
+    monkeypatch.setattr(motor_module.time, "sleep", lambda s: None)
+    HBridgeChannel.open("HB4.B", default_config()["hbridges"]["HB4"]["B"], 20000)
+    assert board.pwms[(20, 2)].enabled and refusals[0] == 0
+
+    refusals[0] = 10 ** 6                                            # never writable: give up, release the channel
+    monkeypatch.setattr(motor_module, "PERMISSION_WAIT_S", 0.0)
+    with pytest.raises(PermissionError):
+        HBridgeChannel.open("HB4.B", default_config()["hbridges"]["HB4"]["B"], 20000)
+    assert board.pwms[(20, 2)].closed
+
+
 def test_a_missing_direction_pin_releases_the_pwm_channel(board):
     spec = {"pwm": {"chip": 0, "channel": 0}, "dir": {"name": "PZ9", "header_pin": 99}}
     with pytest.raises(HardwareError, match="PZ9"):
@@ -142,6 +165,35 @@ def test_a_missing_direction_pin_releases_the_pwm_channel(board):
 def test_direction_pins_are_found_on_whichever_gpio_chip_has_them(board):
     assert open_output({"name": "PL12"}).chip == "/dev/gpiochip1"   # the PL bank is on its own chip
     assert open_output({"chip": "/dev/gpiochip0", "line": "PD1"}).chip == "/dev/gpiochip0"
+
+
+def _fake_sysfs(tmp_path):
+    """The Orange Pi 1.0.8 image's GPIO ranges: banks A-K from 0 on gpiochip0, L-M from 352 on gpiochip1."""
+    for base, count, cdev in ((0, 352, "gpiochip0"), (352, 64, "gpiochip1")):
+        entry = tmp_path / f"gpiochip{base}"
+        (entry / "device" / cdev).mkdir(parents=True)
+        (entry / "base").write_text(f"{base}\n")
+        (entry / "ngpio").write_text(f"{count}\n")
+    return str(tmp_path)
+
+
+def test_unnamed_lines_fall_back_to_allwinner_numbering(board, tmp_path, monkeypatch):
+    from robot.hardware import gpio as gpio_module
+
+    assert gpio_module.sunxi_number("PD1") == 97 and gpio_module.sunxi_number("PL12") == 364
+    assert gpio_module.sunxi_number("GPIO5") is None and gpio_module.sunxi_number("PA40") is None
+    sysfs = _fake_sysfs(tmp_path)
+    assert gpio_module.chip_and_line(97, sysfs) == ("/dev/gpiochip0", 97)
+    assert gpio_module.chip_and_line(364, sysfs) == ("/dev/gpiochip1", 12)
+    assert gpio_module.chip_and_line(500, sysfs) is None
+
+    # An image with no line names: only numbers open.
+    board.gpio_lines = {"/dev/gpiochip0": {97}, "/dev/gpiochip1": {12}}
+    real = gpio_module.chip_and_line
+    monkeypatch.setattr(gpio_module, "chip_and_line", lambda number: real(number, sysfs))
+    pd1 = open_output({"name": "PD1"})
+    assert (pd1.chip, pd1.line) == ("/dev/gpiochip0", 97)
+    assert open_output({"name": "PL12"}).line == 12
 
 
 def test_reverse_writes_direction_before_the_inverted_duty(board):
@@ -193,7 +245,7 @@ def test_open_hardware_opens_every_pin_in_the_wiring_table(board):
     config = default_config()
     hardware = open_hardware(config, simulate=False)
     assert set(hardware.outputs) == {f"{hb}.{ch}" for hb in HBRIDGE_IDS for ch in HBRIDGE_CHANNELS}
-    assert set(board.pwms) == {(0, 0), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6), (0, 7), (1, 2)}
+    assert set(board.pwms) == {(0, 0), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6), (0, 7), (20, 2)}  # S-PWM is pwmchip20
     assert set(board.gpios) == {"PD1", "PD23", "PE12", "PL13", "PK25", "PL5", "PK24", "PL12"}
     assert all(pwm.enabled and pwm.duty_cycle == 0.0 for pwm in board.pwms.values())
     assert not any(gpio.value for gpio in board.gpios.values())     # every motor coasting

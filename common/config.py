@@ -118,7 +118,8 @@ _DEFAULT_CONFIG: dict[str, Any] = {
         "HB3": {"A": _hbridge_channel(0, 5, 32, "PWM0-5", "PK25", 18),
                 "B": _hbridge_channel(0, 6, 36, "PWM0-6", "PL5", 16)},
         "HB4": {"A": _hbridge_channel(0, 7, 38, "PWM0-7", "PK24", 15),
-                "B": _hbridge_channel(1, 2, 7, "S-PWM0-2", "PL12", 13)},
+                # S-PWM is the PWM block at 0x7023000, which the Orange Pi 1.0.8 image numbers pwmchip20.
+                "B": _hbridge_channel(20, 2, 7, "S-PWM0-2", "PL12", 13)},
     },
     # Which H-bridge channel each motor is plugged into.
     "motors": {

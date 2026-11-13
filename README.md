@@ -107,21 +107,33 @@ respond to the controller exactly as the real robot should once it is configured
    set the flags in the Mapping tab. `motor_test motor M3` spins a single motor if you need it.
 8. **Run:** `venv/bin/python main.py robot`. Point the driver station at the Pi's hostname or IP.
 
-To start on boot, a systemd unit along these lines works (adjust the paths):
+### How this robot's Pi is set up
 
-```ini
-[Unit]
-Description=Differential swerve robot
-After=network-online.target
+Orange Pi image `Orangepi4pro_1.0.8_debian_bookworm_desktop_xfce_linux6.6.98`, hostname
+**`orangepi4pro.local`** (the driver station's default address). The scripts in `pi_setup/` did the rest:
 
-[Service]
-WorkingDirectory=/home/orangepi/Differential Swerve Chassis
-ExecStart=/home/orangepi/Differential Swerve Chassis/venv/bin/python main.py robot
-Restart=on-failure
+- `setup.sh`: packages, the I2C/PWM overlays above, the robot's venv, boot to the text console, and an
+  HDMI fix. This image's display driver turns HDMI off for good when the monitor briefly drops its
+  connection at start-up ("no signal"); the fix from
+  [CheezeCS/armbian-a733-gpu](https://github.com/CheezeCS/armbian-a733-gpu/blob/main/docs/hdmi.md) turns it
+  back on.
+- `perms.sh`, `pwm_perms.sh`: the `orangepi` user may use the I2C buses, GPIO lines and PWM outputs
+  without sudo.
+- `finish.sh`: `avahi-daemon` for the `.local` name, and the **`swerve-robot`** service, which starts the
+  robot program on boot (as `orangepi`, from `~/robot`) and restarts it if it stops. `orangepi` may
+  start, stop and restart that one service without a password.
 
-[Install]
-WantedBy=multi-user.target
+On this image `S-PWM` is `pwmchip20`, and the GPIO lines have no names, so pins such as `PD1` are opened
+by Allwinner numbering (bank × 32 + pin: `PD1` is line 97 on `gpiochip0`, `PL12` is line 12 on
+`gpiochip1`).
+
+**Update the code on the Pi** from this PC (it keeps the Pi's `robot_config.json`):
+
+```bash
+powershell -ExecutionPolicy Bypass -File pi_setup\sync.ps1
 ```
+
+**Robot log:** `ssh orangepi@orangepi4pro.local journalctl -u swerve-robot -f`
 
 ## Driving
 

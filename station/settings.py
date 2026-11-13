@@ -34,7 +34,7 @@ RANGES = {
 
 @dataclass
 class StationSettings:
-    robot_host: str = "orangepi.local"
+    robot_host: str = "orangepi4pro.local"  # the Orange Pi 4 Pro image's own hostname
     drive_sensitivity: float = 100.0  # percent of max speed at full left stick
     drive_deadzone: float = 8.0       # percent of stick travel ignored around center
     turn_sensitivity: float = 60.0    # percent of max rotation at full right stick

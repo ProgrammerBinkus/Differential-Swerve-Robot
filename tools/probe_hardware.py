@@ -11,6 +11,7 @@ import glob
 import os
 
 from common.config import ENCODER_IDS, HBRIDGE_CHANNELS, HBRIDGE_IDS
+from robot.hardware.gpio import chip_and_line, sunxi_number
 from tools._common import load_config
 
 OK, BAD = "  ok ", "  !! "
@@ -44,11 +45,18 @@ def probe_gpio(config: dict) -> None:
         for channel in HBRIDGE_CHANNELS:
             spec = config["hbridges"][hb][channel]["dir"]
             label = f"{hb}.{channel}: {spec.get('name', '')} (header pin {spec.get('header_pin')})"
-            candidates = [(spec["chip"], spec["line"])] if "chip" in spec else [(c, spec["name"]) for c in chips]
+            if "chip" in spec:
+                candidates = [(spec["chip"], spec["line"])]
+            else:
+                candidates = [(c, spec["name"]) for c in chips]
+                number = sunxi_number(spec["name"])
+                located = chip_and_line(number) if number is not None else None
+                if located:
+                    candidates.append(located)  # unnamed lines: Allwinner numbering
             for chip, line in candidates:
                 try:
                     gpio = GPIO(chip, line, "in")
-                except GPIOError:
+                except (GPIOError, LookupError):
                     continue
                 print(f"{OK}{label} -> {chip} line {gpio.line}")
                 gpio.close()
