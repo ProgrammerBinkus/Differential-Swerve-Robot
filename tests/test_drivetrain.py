@@ -76,6 +76,62 @@ def test_spinning_at_top_speed_stays_inside_the_gyro_range():
     assert 1300.0 < fastest < 2000.0        # reaches the limit it was given, below the gyro's +/-2000
 
 
+# ------------------------------------------------- module state optimization (WPILib optimize)
+# A wheel never steers more than 90 degrees: past that it steers the short way to the opposite
+# heading and spins backwards, which ends up pushing the robot the same way, sooner.
+
+def _plan_from_zero(rig, wanted_deg, speed=1.0):
+    """Ask a wheel for a heading ``wanted_deg`` away from where it points; return (steer, drive) relative to it."""
+    from wpimath.geometry import Rotation2d
+    from wpimath.kinematics import SwerveModuleState
+
+    module = rig[1].modules[0]                       # simulated wheels start at scattered angles
+    start = math.degrees(module.angle_rad)
+    drive, _ = module.plan(SwerveModuleState(speed, Rotation2d.fromDegrees(start + wanted_deg)), 1.0)
+    return math.degrees(math.remainder(module.target_rad - math.radians(start), 2 * math.pi)), drive
+
+
+@pytest.mark.parametrize("wanted, steer_to", [(170, -10), (-170, 10), (135, -45), (91, -89)])
+def test_a_turn_over_90_degrees_steers_the_short_way_and_reverses(rig, wanted, steer_to):
+    target, drive = _plan_from_zero(rig, wanted)
+    assert target == pytest.approx(steer_to, abs=0.01)
+    assert drive < 0                                 # the wheel spins backwards
+
+
+@pytest.mark.parametrize("wanted", [10, 45, 89, -89])
+def test_a_turn_up_to_90_degrees_is_taken_as_asked(rig, wanted):
+    target, drive = _plan_from_zero(rig, wanted)
+    assert target == pytest.approx(wanted, abs=0.01)
+    assert drive > 0
+
+
+def test_cosine_scaling_holds_the_wheel_back_until_it_points_the_right_way(rig):
+    _, drive = _plan_from_zero(rig, 170)             # 10 degrees off after the flip
+    assert drive == pytest.approx(-math.cos(math.radians(10)), abs=1e-6)
+    _, drive = _plan_from_zero(rig, 89)              # nearly sideways: hardly any push yet
+    assert abs(drive) < 0.02
+
+
+def test_reversing_the_robot_never_spins_the_wheels_around(rig):
+    run(rig, 1.5, lambda d: d.drive(0.6, 0.0, 0.0))  # forward, wheels at 0
+    widest = []
+    run(rig, 1.5, lambda d: (d.drive(-0.6, 0.0, 0.0),
+                             widest.append(max(abs(a) for a in angles(d).values()))))
+    assert max(widest) < 3.0                         # no 180-degree swing
+    assert all(m.drive == pytest.approx(-0.6, abs=0.02) for m in rig[1].modules)
+
+
+def test_a_170_degree_heading_change_steers_10_degrees(rig):
+    run(rig, 1.5, lambda d: d.drive(0.5, 0.0, 0.0))  # line every wheel up at 0 first
+    heading = math.radians(170)
+    widest = []
+    run(rig, 2.0, lambda d: (d.drive(0.5 * math.cos(heading), 0.5 * math.sin(heading), 0.0),
+                             widest.append(max(abs(a) for a in angles(d).values()))))
+    assert all(a == pytest.approx(-10.0, abs=2.0) for a in angles(rig[1]).values())
+    assert max(widest) < 12.0                        # never swung past the short way round
+    assert all(m.drive < 0 for m in rig[1].modules)
+
+
 def test_driving_straight_runs_both_motors_together_once_aligned(rig):
     run(rig, 2.0, lambda d: d.drive(0.5, 0.0, 0.0))
     for module in rig[1].modules:
