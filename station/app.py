@@ -18,6 +18,7 @@ from station.parts import describe
 from station.settings import StationSettings
 from station.shaping import shape_inputs
 from station.simulator import START_FAILED, LocalSimulator
+from station.titlebar import CaptionButton, CaptionButtons, NativeFrame, TopEdgeGrip, bind_drag
 from station.views.drive_tab import DriveTab, DriveTabActions
 from station.views.mapping_tab import MappingTab
 from station.views.tuning_tab import TuningTab
@@ -84,8 +85,12 @@ class StationApp:
         self._simulator_checked_at = time.monotonic()
         self._simulator_message = ""
         self._field_pending_until = 0.0
+        self._window_frame = NativeFrame(root)
+        self._was_maximized = False
+        self._window_frame.install()  # our own title bar in place of the Windows one, where possible
 
         self._build()
+        self._window_frame.reveal()
         self.keyboard = KeyboardDrive(root, on_change=self.drive_tab.show_held_keys)
         self.keyboard.enabled = settings.keyboard_control
         root.bind_all("<space>", lambda _event: self._disable("Space bar"))
@@ -107,18 +112,25 @@ class StationApp:
         outer.columnconfigure(0, weight=1)
         outer.rowconfigure(3, weight=1)
 
-        # Header: drawing title on the left, title block on the right.
-        header = ttk.Frame(outer, padding=(20, 16, 20, 10))
+        # Header: drawing title on the left, title block on the right. With our own
+        # title bar it is also the window's caption, with the window buttons in the
+        # top-right corner above the title block (beside it, they'd squeeze the title).
+        custom_frame = self._window_frame.active
+        scale = self.root.winfo_fpixels("1i") / 96
+        block_top = round(CaptionButton.HEIGHT * scale) + 4 if custom_frame else 16
+        header = ttk.Frame(outer, padding=(20, 0, 20, 10))
         header.grid(row=0, column=0, sticky="ew")
         header.columnconfigure(0, weight=1)
         title = ttk.Frame(header)
-        title.grid(row=0, column=0, sticky="sw")
-        ttk.Label(title, text=f"DIFFERENTIAL SWERVE DRIVEBASE  ·  CONTROL  ·  V{__version__}",
-                  style="Label.TLabel").pack(anchor="w")
-        ttk.Label(title, text="Driver Station", style="Title.TLabel").pack(anchor="w")
+        title.grid(row=0, column=0, sticky="sw", pady=(16, 0))
+        overline = ttk.Label(title, text=f"DIFFERENTIAL SWERVE DRIVEBASE  ·  CONTROL  ·  V{__version__}",
+                             style="Label.TLabel")
+        overline.pack(anchor="w")
+        heading = ttk.Label(title, text="Driver Station", style="Title.TLabel")
+        heading.pack(anchor="w")
 
         block = TitleBlock(header)
-        block.grid(row=0, column=1, sticky="se")
+        block.grid(row=0, column=1, sticky="se", padx=(16, 0), pady=(block_top, 0))
         self._connection_switch = Segmented(block.add_cell("Connection"),
                                             (("simulator", "Simulator"), ("robot", "Robot")),
                                             self._connection, self._set_connection)
@@ -135,6 +147,15 @@ class StationApp:
         self._connect_button = ttk.Button(address, text="Connect", command=self._connect, padding=(10, 3))
         self._connect_button.pack(side="left", padx=(6, 0), pady=(2, 0))
         self._show_connection_widgets()
+
+        if custom_frame:
+            frame = self._window_frame
+            self._caption = CaptionButtons(outer, frame.minimize, frame.toggle_maximize, self.close, scale)
+            self._caption.place(relx=1.0, y=0, anchor="ne")
+            bind_drag((outer, header, title, overline, heading), frame.start_move, frame.toggle_maximize)
+            self._top_grip = TopEdgeGrip(outer, frame.start_resize)
+            self._top_grip.show(True)
+            self.root.bind("<Configure>", self._window_resized, add="+")
 
         self._tabs = TabBar(outer, on_select=self._show_page)
         self._tabs.grid(row=1, column=0, sticky="w", padx=20)
@@ -163,6 +184,15 @@ class StationApp:
             self._tabs.add(key, key)
         self._show_page("drive")
         self.terminal = self.drive_tab.terminal
+
+    def _window_resized(self, event: tk.Event) -> None:
+        if event.widget is not self.root:
+            return
+        maximized = self._window_frame.maximized
+        if maximized != self._was_maximized:
+            self._was_maximized = maximized
+            self._caption.show_maximized(maximized)
+            self._top_grip.show(not maximized)  # a maximized window can't be resized from its edge
 
     # -------------------------------------------------------------------- tick
 
