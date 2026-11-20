@@ -181,12 +181,12 @@ class TabBar(tk.Frame):
             bar.configure(bg=theme.HIGHLIGHT if name == key else theme.PAPER)
 
 
-class TitleBlock(tk.Frame):
+class TitleBlock(ttk.Frame):
     """A drawing title block: ruled cells, each with an uppercase key above its value."""
 
     def __init__(self, parent: tk.Misc) -> None:
-        super().__init__(parent, bg=theme.INK, padx=1, pady=1)  # the outer ink frame
-        self._inner = tk.Frame(self, bg=theme.RULE)
+        super().__init__(parent, style="Drawing.TFrame", padding=theme.CORNER_INSET)  # outer ink frame, rounded
+        self._inner = tk.Frame(self, bg=theme.RULE)       # shows between the cells as rules
         self._inner.pack(fill="both", expand=True)
         self._column = 0
 

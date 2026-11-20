@@ -98,8 +98,8 @@ class DriveTab(ttk.Frame):
 
     # ---------------------------------------------------------------- builders
 
-    def _build_figure(self, parent: tk.Misc) -> tk.Frame:
-        frame = tk.Frame(parent, bg=theme.INK, padx=1, pady=1)  # the drawing's ink border
+    def _build_figure(self, parent: tk.Misc) -> ttk.Frame:
+        frame = ttk.Frame(parent, style="Drawing.TFrame", padding=theme.CORNER_INSET)  # ink border, rounded
         inner = tk.Frame(frame, bg=theme.SHEET)
         inner.pack(fill="both", expand=True)
         inner.columnconfigure(0, weight=1)
@@ -233,8 +233,10 @@ class DriveTab(ttk.Frame):
 
     def _build_sticks(self, parent: tk.Misc) -> Card:
         card = Card(parent, "Joysticks")
-        readout = tk.Frame(card, bg=theme.RULE, padx=1, pady=1)
-        readout.grid(row=1, column=0, sticky="ew", pady=(0, 12))
+        box = ttk.Frame(card, style="Readout.TFrame", padding=theme.CORNER_INSET)  # rounded outline
+        box.grid(row=1, column=0, sticky="ew", pady=(0, 12))
+        readout = tk.Frame(box, bg=theme.RULE)              # shows between the cells as rules
+        readout.pack(fill="x")
         self._readouts: dict[str, tk.Label] = {}
         for column, key in enumerate(("forward", "left", "turn")):
             readout.columnconfigure(column, weight=1, uniform="readout")
