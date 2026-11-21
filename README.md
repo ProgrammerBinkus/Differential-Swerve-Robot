@@ -1,5 +1,7 @@
 # Differential Swerve Chassis
 
+Everything for my driver station and robot code for my custom-designed differential swerve chassis.
+
 Control software for a four-module differential swerve robot: an Orange Pi 4 Pro on the robot runs the
 control loop, and a Windows laptop runs a dark-mode driver station that reads an Xbox controller.
 
