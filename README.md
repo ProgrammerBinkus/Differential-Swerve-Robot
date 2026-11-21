@@ -109,14 +109,18 @@ respond to the controller exactly as the real robot should once it is configured
 
 ### How this robot's Pi is set up
 
+**[docs/orange-pi.md](docs/orange-pi.md)** has the full walkthrough: preparing and flashing a new card
+without a monitor, the setup scripts, everyday updates, what the LEDs mean, and how to diagnose a Pi that
+won't boot and rescue its SD card. The wiring sheets are in [`docs/`](docs/) (open them in a browser).
+
 Orange Pi image `Orangepi4pro_1.0.8_debian_bookworm_desktop_xfce_linux6.6.98`, hostname
 **`orangepi4pro.local`** (the driver station's default address). The scripts in `pi_setup/` did the rest:
 
 - `setup.sh`: packages, the I2C/PWM overlays above, the robot's venv, boot to the text console, and an
   HDMI fix. This image's display driver turns HDMI off for good when the monitor briefly drops its
-  connection at start-up ("no signal"); the fix from
-  [CheezeCS/armbian-a733-gpu](https://github.com/CheezeCS/armbian-a733-gpu/blob/main/docs/hdmi.md) turns it
-  back on.
+  connection at start-up ("no signal"); the fix in `pi_setup/hdmi-fix/`, from
+  [CheezeCS/armbian-a733-gpu](https://github.com/CheezeCS/armbian-a733-gpu/blob/main/docs/hdmi.md) (MIT),
+  turns it back on.
 - `perms.sh`, `pwm_perms.sh`: the `orangepi` user may use the I2C buses, GPIO lines and PWM outputs
   without sudo.
 - `finish.sh`: `avahi-daemon` for the `.local` name, and the **`swerve-robot`** service, which starts the

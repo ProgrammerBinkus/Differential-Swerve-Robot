@@ -1,7 +1,6 @@
 #!/bin/bash
 # One-time Orange Pi setup for the swerve robot. Run with: sudo bash setup.sh
-# Needs the three HDMI fix files next to it (hdmi-console-restore, hdmi-console-restore.service,
-# 99-hdmi-console-restore.rules) from https://github.com/CheezeCS/armbian-a733-gpu/tree/main/files/hdmi-fix
+# Uses the HDMI fix in hdmi-fix/ (from https://github.com/CheezeCS/armbian-a733-gpu, MIT license).
 set -e
 cd "$(dirname "$0")"
 
@@ -10,9 +9,9 @@ apt-get update
 apt-get install -y i2c-tools gpiod python3-venv libdrm-tests
 
 echo "== 2/4 HDMI fix (screen comes back when the monitor reconnects)"
-install -m 755 hdmi-console-restore /usr/local/sbin/
-install -m 644 hdmi-console-restore.service /etc/systemd/system/
-install -m 644 99-hdmi-console-restore.rules /etc/udev/rules.d/
+install -m 755 hdmi-fix/hdmi-console-restore /usr/local/sbin/
+install -m 644 hdmi-fix/hdmi-console-restore.service /etc/systemd/system/
+install -m 644 hdmi-fix/99-hdmi-console-restore.rules /etc/udev/rules.d/
 systemctl daemon-reload
 systemctl enable hdmi-console-restore.service
 udevadm control --reload-rules

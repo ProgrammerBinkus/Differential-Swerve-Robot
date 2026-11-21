@@ -12,6 +12,10 @@ robot_config.json
 robot_config.json.bak
 station_settings.json
 
+# Filled-in Wi-Fi files (hold the password) and SD card images
+*.nmconnection
+*.img
+
 # Windows app build output (packaging\build.ps1)
 build/
 dist/

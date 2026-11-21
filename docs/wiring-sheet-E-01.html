@@ -1,0 +1,635 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Swerve Chassis Wiring</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: an engineering drawing sheet. Title block up top, the plan-view wiring figure with a detail panel beside it, then the pin-level schedules underneath. */
+:root{
+  --paper:#F3F5F6; --sheet:#FFFFFF; --ink:#18242E; --muted:#5A6873; --rule:#CBD3D9; --faint:#DDE3E7;
+  --hl:#F5C518; --hl-ink:#3A2E00;
+  --w-vbat:#C62828; --w-5v:#D97706; --w-3v3:#7C4DCC; --w-ctl:#2E7D43; --w-i2c:#1B66C9; --w-mot:#8A5A2B; --w-gnd:#2B2B2B;
+  --ok:#2E7D43; --warn:#B45309; --crit:#C62828;
+  --f-display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#11171B; --sheet:#182026; --ink:#E4EAEE; --muted:#97A6B0; --rule:#33414B; --faint:#26313A;
+    --hl:#F5C518; --hl-ink:#2A2100;
+    --w-vbat:#FF6B6B; --w-5v:#FFA94D; --w-3v3:#B197FC; --w-ctl:#69DB7C; --w-i2c:#74C0FC; --w-mot:#D4A373; --w-gnd:#C9D1D6;
+    --ok:#69DB7C; --warn:#FFB454; --crit:#FF6B6B;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#11171B; --sheet:#182026; --ink:#E4EAEE; --muted:#97A6B0; --rule:#33414B; --faint:#26313A;
+  --hl:#F5C518; --hl-ink:#2A2100;
+  --w-vbat:#FF6B6B; --w-5v:#FFA94D; --w-3v3:#B197FC; --w-ctl:#69DB7C; --w-i2c:#74C0FC; --w-mot:#D4A373; --w-gnd:#C9D1D6;
+  --ok:#69DB7C; --warn:#FFB454; --crit:#FF6B6B;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.55;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px 56px}
+.wrap{max-width:1240px;margin:0 auto;display:flex;flex-direction:column;gap:28px}
+h1,h2,h3{font-family:var(--f-display);font-weight:600;letter-spacing:.01em;line-height:1.1;margin:0;text-wrap:balance}
+h1{font-size:clamp(34px,5vw,52px);font-weight:700}
+h2{font-size:28px}
+h3{font-size:20px}
+p{margin:0}
+code,.mono{font-family:var(--f-mono);font-size:.9em}
+a{color:inherit;text-underline-offset:3px}
+.label{font-family:var(--f-display);text-transform:uppercase;letter-spacing:.08em;font-size:13px;font-weight:600;color:var(--muted)}
+
+/* Title block */
+.head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:20px 32px;align-items:end;border-bottom:2px solid var(--ink);padding-bottom:18px}
+.head .lede{max-width:66ch;color:var(--muted);margin-top:10px}
+.tblock{display:grid;grid-template-columns:auto auto;border:1.5px solid var(--ink);font-size:13px;background:var(--sheet)}
+.tblock div{padding:5px 10px;border-bottom:1px solid var(--rule)}
+.tblock div:nth-child(odd){border-right:1px solid var(--rule);font-family:var(--f-display);text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600}
+.tblock div:nth-last-child(-n+2){border-bottom:0}
+.tblock .mono{font-size:13px}
+
+/* Figure */
+.fig{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:0;border:1.5px solid var(--ink);background:var(--sheet)}
+.fig-main{min-width:0;display:flex;flex-direction:column}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--rule)}
+.toolbar .label{margin-right:4px}
+.chip{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--rule);background:var(--paper);color:var(--ink);border-radius:999px;padding:4px 11px 4px 9px;font:500 13px var(--f-body);cursor:pointer}
+.chip .sw{width:18px;height:4px;border-radius:2px;background:var(--c)}
+.chip[aria-pressed="false"]{opacity:.45}
+.chip[aria-pressed="false"] .sw{background:var(--rule)}
+.chip:focus-visible,button:focus-visible,.pin:focus-visible{outline:2px solid var(--hl);outline-offset:2px}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+#diagram{display:block;width:100%;min-width:760px;height:auto;font-family:var(--f-body)}
+.fig-cap{padding:10px 14px;border-top:1px solid var(--rule);color:var(--muted);font-size:13px}
+.panel{border-left:1.5px solid var(--ink);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.panel h3{font-size:24px}
+.panel .part{color:var(--muted);font-size:13px;margin-top:-6px}
+.panel ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px;font-size:13.5px}
+.panel .conn{list-style:none;padding:0}
+.panel .conn li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:start}
+.panel .conn .tag{font-family:var(--f-mono);font-size:11.5px;border:1px solid var(--rule);border-radius:4px;padding:0 5px;white-space:nowrap}
+.panel .hint{color:var(--muted);font-size:13px}
+.panel .reset{align-self:flex-start;border:1px solid var(--rule);background:var(--paper);color:var(--ink);border-radius:6px;padding:4px 10px;font:500 13px var(--f-body);cursor:pointer}
+
+/* SVG element styles (theme tokens) */
+.chassis{fill:none;stroke:var(--faint);stroke-width:2}
+.chassis-fill{fill:var(--paper);stroke:var(--rule);stroke-width:1.5}
+.gear{fill:none;stroke:var(--rule);stroke-width:1.2;stroke-dasharray:3 4}
+.comp rect.box{fill:var(--sheet);stroke:var(--ink);stroke-width:1.6}
+.comp .t1{fill:var(--ink);font-family:var(--f-display);font-weight:700;font-size:17px}
+.comp .t2{fill:var(--muted);font-size:11.5px}
+.comp{cursor:pointer}
+.comp:hover rect.box{stroke-width:2.4}
+.comp.sel rect.box{fill:var(--hl);stroke:var(--ink);stroke-width:2.4}
+.comp.sel .t1,.comp.sel .t2{fill:var(--hl-ink)}
+.comp.dim{opacity:.35}
+.comp.rec rect.box{stroke-dasharray:5 4}
+.wire{fill:none;stroke-linecap:round;stroke-linejoin:round}
+.wire.halo{stroke:var(--sheet);stroke-width:9}
+.wire.core{stroke-width:3.6}
+.wire.vbat{stroke:var(--w-vbat);stroke-width:5}
+.wire.v5{stroke:var(--w-5v)}
+.wire.ctl{stroke:var(--w-ctl)}
+.wire.i2c{stroke:var(--w-i2c)}
+.wire.mot{stroke:var(--w-mot);stroke-width:3}
+.wgroup{cursor:pointer}
+.wgroup.dim{opacity:.13}
+.wgroup.sel .core{stroke-width:6}
+.wtag rect{fill:var(--sheet);stroke:currentColor;stroke-width:1.3}
+.wtag text{fill:var(--ink);font-family:var(--f-mono);font-size:12px;font-weight:500}
+.jdot{fill:currentColor}
+.annot{fill:var(--muted);font-size:12.5px}
+.annot.strong{fill:var(--ink);font-family:var(--f-display);font-weight:700;font-size:16px;letter-spacing:.1em}
+.front{fill:var(--ink)}
+.hdr{fill:none;stroke:var(--ink);stroke-width:1;stroke-dasharray:2 2}
+
+/* Findings */
+.findings{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.find{background:var(--sheet);border:1px solid var(--rule);border-left:5px solid var(--c);padding:14px 16px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.find .sev{font-family:var(--f-display);text-transform:uppercase;letter-spacing:.08em;font-size:12.5px;font-weight:700;color:var(--c)}
+.find h3{font-size:21px}
+.find p{font-size:14px;color:var(--ink)}
+.find p + p{color:var(--muted)}
+
+/* Sections & tables */
+section{display:flex;flex-direction:column;gap:14px}
+.sec-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 16px;border-bottom:1px solid var(--rule);padding-bottom:8px}
+.sec-head p{color:var(--muted);font-size:14px;max-width:72ch}
+.twocol{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px}
+.tbl{overflow-x:auto;border:1px solid var(--rule);background:var(--sheet)}
+table{border-collapse:collapse;width:100%;font-size:13.5px;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--faint);vertical-align:top}
+th{font-family:var(--f-display);text-transform:uppercase;letter-spacing:.06em;font-weight:600;font-size:12.5px;color:var(--muted);background:var(--paper);white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td.mono,td .mono{font-family:var(--f-mono);font-size:12.5px}
+.pill{display:inline-block;font-family:var(--f-mono);font-size:11.5px;border-radius:4px;padding:0 6px;border:1px solid var(--c);color:var(--c);white-space:nowrap}
+
+/* 40-pin header */
+.header-wrap{background:var(--sheet);border:1px solid var(--rule);padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.pins{display:grid;grid-template-columns:minmax(0,1fr) 34px 34px minmax(0,1fr);gap:3px 6px;align-items:center;font-size:12.5px}
+.pin{width:30px;height:24px;border-radius:5px;display:grid;place-items:center;font-family:var(--f-mono);font-size:11.5px;font-weight:500;border:1.5px solid var(--c);color:var(--ink);background:color-mix(in srgb,var(--c) 16%,transparent);cursor:default}
+.pin.sq{border-radius:1px}
+.plabel{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.plabel.l{text-align:right}
+.plabel b{font-weight:600}
+.plabel .mono{color:var(--muted);font-size:11px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:12px;height:12px;border-radius:3px;border:1.5px solid var(--c);background:color-mix(in srgb,var(--c) 16%,transparent);display:inline-block}
+
+pre{margin:0;background:var(--sheet);border:1px solid var(--rule);padding:12px 14px;overflow-x:auto;font-family:var(--f-mono);font-size:12.5px;line-height:1.55}
+.notes{display:flex;flex-direction:column;gap:8px;margin:0;padding-left:20px;font-size:14px;max-width:80ch}
+.checklist{counter-reset:c;list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px;font-size:14px;max-width:84ch}
+.checklist li{counter-increment:c;display:grid;grid-template-columns:28px minmax(0,1fr);gap:6px}
+.checklist li::before{content:counter(c);font-family:var(--f-display);font-weight:700;font-size:16px;color:var(--muted)}
+.sources{columns:2;column-gap:28px;font-size:13.5px;padding-left:18px;margin:0}
+.sources li{break-inside:avoid;margin-bottom:5px}
+
+@media (max-width:980px){
+  .fig{grid-template-columns:minmax(0,1fr)}
+  .panel{border-left:0;border-top:1.5px solid var(--ink)}
+}
+@media (max-width:760px){
+  .head{grid-template-columns:minmax(0,1fr)}
+  .findings,.twocol{grid-template-columns:minmax(0,1fr)}
+  .sources{columns:1}
+}
+@media (prefers-reduced-motion:no-preference){
+  .wgroup,.comp{transition:opacity .15s}
+}
+</style>
+
+<div class="wrap">
+
+<header class="head">
+  <div>
+    <div class="label">Differential swerve drivebase · electrical</div>
+    <h1>Swerve Chassis Wiring</h1>
+    <p class="lede">Plan view of every BOM part in the position it occupies in the CAD overhead view, with each harness, its pins and its wire gauge. Click a part or a wire to trace it. Pin-level schedules follow below the drawing.</p>
+  </div>
+  <div class="tblock" aria-label="Drawing information">
+    <div>Sheet</div><div class="mono">E-01 · plan view</div>
+    <div>Rev</div><div class="mono">A · 2026-10-30</div>
+    <div>Front</div><div>Top of CAD overhead (IMU side)</div>
+    <div>Computer</div><div>Orange Pi 4 Pro 4 GB</div>
+    <div>Battery</div><div class="mono">3S 11.1 V 2200 mAh</div>
+  </div>
+</header>
+
+<div class="fig">
+  <div class="fig-main">
+    <div class="toolbar" role="group" aria-label="Show layers">
+      <span class="label">Layers</span>
+      <button class="chip" data-layer="vbat" aria-pressed="true" style="--c:var(--w-vbat)"><span class="sw"></span>Battery power</button>
+      <button class="chip" data-layer="v5" aria-pressed="true" style="--c:var(--w-5v)"><span class="sw"></span>5 V to Pi</button>
+      <button class="chip" data-layer="ctl" aria-pressed="true" style="--c:var(--w-ctl)"><span class="sw"></span>Motor control</button>
+      <button class="chip" data-layer="mot" aria-pressed="true" style="--c:var(--w-mot)"><span class="sw"></span>Motor leads</button>
+      <button class="chip" data-layer="i2c" aria-pressed="true" style="--c:var(--w-i2c)"><span class="sw"></span>I2C sensors</button>
+    </div>
+    <figure style="margin:0">
+      <div class="scroll">
+        <svg id="diagram" viewBox="-10 -46 1320 1080" role="img" aria-label="Plan-view wiring diagram: battery to power hub, hub to four AT8236 H-bridges on the chassis edges and 5 V to the Orange Pi; Orange Pi control harnesses to each H-bridge and one I2C bus to each MT6701 encoder, with the MPU-6050 sharing I2C0."></svg>
+      </div>
+      <figcaption class="fig-cap">Drawn over the CAD overhead outline (front at top). Each line is a harness; its tag (W1–W15) is listed in the wire schedule. A line passing over another without a dot is not connected. Dashed outlines are parts added to the BOM.</figcaption>
+    </figure>
+  </div>
+  <aside class="panel" id="panel" aria-live="polite"></aside>
+</div>
+
+<section aria-labelledby="h-find">
+  <div class="sec-head"><h2 id="h-find">What the check changed</h2><p>Cross-checked against each part's datasheet or listing. Four items differ from the BOM as written.</p></div>
+  <div class="findings" id="findings"></div>
+</section>
+
+<section aria-labelledby="h-hdr">
+  <div class="sec-head"><h2 id="h-hdr">Orange Pi 4 Pro header</h2><p>All 40 pins as assigned. Every function comes from the 40-pin tables in the Orange Pi 4 Pro manual (v1.4). GPIO is 3.3 V and not 5 V tolerant.</p></div>
+  <div class="twocol">
+    <div class="header-wrap">
+      <div class="legend" id="pinLegend"></div>
+      <div class="pins" id="pins" aria-label="40-pin header map"></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+      <h3>Software setup</h3>
+      <p style="font-size:14px">The 40-pin PWM and I2C functions are off by default. Enable these overlays (names as listed in the manual), then reboot:</p>
+      <pre>i2c0 i2c1 i2c2 i2c3
+pwm0 pwm2 pwm3 pwm4 pwm5 pwm6 pwm7 spwm2</pre>
+      <ul class="notes">
+        <li>Run all eight PWM channels at the same frequency (20 kHz is inaudible and well inside the AT8236's 0–100 kHz). Paired Allwinner channels share a clock, so mixed frequencies cause trouble.</li>
+        <li>Linux may number the I2C adapters differently from TWI0–3. Run <code>i2cdetect -l</code> once and map each adapter to its encoder in the PC app.</li>
+        <li>Expected scan: <code>0x06</code> on every encoder bus, plus <code>0x68</code> on I2C0 for the MPU-6050.</li>
+        <li>Pins 8, 10 and 12 stay free (UART7 on 8/10 is handy for a serial console).</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="h-mot">
+  <div class="sec-head"><h2 id="h-mot">Motor control</h2><p>Each motor takes one hardware PWM pin and one direction pin. Motors are numbered clockwise from the front-left; each module pairs two motors on neighbouring edges, and each H-bridge drives motors from two different modules.</p></div>
+  <div class="tbl"><table id="tMotor"></table></div>
+  <div class="twocol">
+    <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
+      <h3>AT8236 inputs</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>IN1 (PWM pin)</th><th>IN2 (DIR pin)</th><th>Output</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">1</td><td class="mono">0</td><td>Forward (OUT1 high)</td></tr>
+          <tr><td class="mono">0</td><td class="mono">1</td><td>Reverse (OUT2 high)</td></tr>
+          <tr><td class="mono">1</td><td class="mono">1</td><td>Brake (both low)</td></tr>
+          <tr><td class="mono">0</td><td class="mono">0</td><td>Coast; sleeps after 1.2 ms</td></tr>
+        </tbody>
+      </table></div>
+      <p style="font-size:13.5px;color:var(--muted)">IN1 and IN2 have 100 kΩ pull-downs, so every motor coasts while the Pi boots. Logic high is 2 V minimum, so 3.3 V GPIO drives them directly.</p>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
+      <h3>Driving with PWM + DIR</h3>
+      <p style="font-size:14px">With DIR high, the PWM pin switches between brake and reverse, so reverse speed is the time PWM is low. Invert the duty in reverse:</p>
+<pre>def set_motor(m, cmd):          # cmd from -1.0 to 1.0
+    if cmd >= 0:
+        m.dir.off()             # IN2 = 0
+        m.pwm.duty = cmd        # drive / coast
+    else:
+        m.dir.on()              # IN2 = 1
+        m.pwm.duty = 1 + cmd    # low time = reverse drive</pre>
+      <p style="font-size:13.5px;color:var(--muted)">Forward uses coast between pulses and reverse uses brake, so the two directions respond slightly differently at the same command. The PID loop absorbs this; keep it in mind when tuning.</p>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="h-sens">
+  <div class="sec-head"><h2 id="h-sens">Encoders and IMU</h2><p>The MT6701 answers only at I2C address 0x06, so each encoder gets its own bus. The Orange Pi 4 Pro has exactly four I2C buses on the header. The MPU-6050 sits at 0x68 and shares I2C0 without conflict.</p></div>
+  <div class="tbl"><table id="tSens"></table></div>
+  <ul class="notes">
+    <li>Power every encoder from 3.3 V. MT6701 boards put their I2C pull-ups on their own VCC, so a 5 V supply would put 5 V on the Pi's pins.</li>
+    <li>Leave the encoder board's OUT pad unconnected. Mount the diametric magnet on the 45T encoder gear's axis.</li>
+    <li>If a bus finds nothing, the board may lack pull-ups: add 4.7 kΩ from SDA and SCL to 3.3 V at the encoder end. Keep each encoder run under about 30 cm and twist SDA with GND.</li>
+    <li>The 2:1 gearing (90T wheel gear to 45T encoder gear) means one encoder turn equals 180° of steering. Zero within ±90° of straight before start-up, as your outline says.</li>
+  </ul>
+</section>
+
+<section aria-labelledby="h-pwr">
+  <div class="sec-head"><h2 id="h-pwr">Power</h2><p>The battery feeds the hub, the hub's four 20 A pads feed the four H-bridges at battery voltage, and its 5 V regulator feeds the Orange Pi through the header.</p></div>
+  <div class="tbl"><table id="tPower"></table></div>
+  <div class="twocol">
+    <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
+      <h3>Current budget</h3>
+      <div class="tbl"><table id="tBudget"></table></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
+      <h3>Parts to add</h3>
+      <div class="tbl"><table id="tAdd"></table></div>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="h-wire">
+  <div class="sec-head"><h2 id="h-wire">Wire schedule</h2><p>Every tagged harness in the drawing, end to end, with conductors and gauge.</p></div>
+  <div class="tbl"><table id="tWires"></table></div>
+</section>
+
+<section aria-labelledby="h-bring">
+  <div class="sec-head"><h2 id="h-bring">First power-up</h2><p>Wheels off the ground for every step.</p></div>
+  <ol class="checklist">
+    <li>With the battery unplugged, check continuity from every GND point back to the hub's battery negative, and check that no 5 V or battery wire touches any 3.3 V or signal pin.</li>
+    <li>Plug in the battery with the Orange Pi disconnected. Measure 5.0 V at the hub's 5 V pad and battery voltage at each H-bridge's VM terminal.</li>
+    <li>Connect W7 and boot the Pi. Confirm 5 V between header pins 2 and 6 and 3.3 V between pins 1 and 9.</li>
+    <li>Enable the overlays and run <code>i2cdetect</code> on each bus: one <code>0x06</code> per encoder bus and <code>0x68</code> on I2C0.</li>
+    <li>Drive one motor at a time at 20% duty, forward then reverse. Confirm it matches the table, or fix the mapping in the PC app. Swap a motor's two leads if it spins the wrong way.</li>
+    <li>Drive both motors of one module the same way at the same speed. The wheel should roll without steering; if it steers instead, one motor's direction is reversed.</li>
+  </ol>
+</section>
+
+<section aria-labelledby="h-src">
+  <div class="sec-head"><h2 id="h-src">Sources</h2><p>Part links from the BOM, plus datasheets used for the cross-check.</p></div>
+  <ol class="sources">
+    <li><a href="https://macrogroup.ru/upload/iblock/976/an345hputt5kbaeeg5v0v21yvh9tpd1z/OrangePi_4_Pro_A733_User-Manual_v1.4.pdf" target="_blank" rel="noopener">Orange Pi 4 Pro (A733) user manual v1.4</a>: 40-pin table, I2C and PWM pins, 5 V header power</li>
+    <li><a href="http://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/details/Orange-Pi-4-Pro.html" target="_blank" rel="noopener">Orange Pi 4 Pro product page</a>: 5 V/3 A, Wi-Fi 6, 89 × 56 mm</li>
+    <li><a href="http://www.mateksys.com/downloads/HUB5V12V_Manual_V3.pdf" target="_blank" rel="noopener">Matek Mini Power Hub manual</a>: 9–26 V, 4 × 20 A, 5 V/3 A, 12 V BEC needs 4–6S</li>
+    <li><a href="https://www.amazon.com/Haoyull-Distribution-Double-Efficient-Quadcopter/dp/B0DCMFTRNW" target="_blank" rel="noopener">Haoyull Matek Power Hub listing (BOM link)</a></li>
+    <li><a href="https://cdn.semikey.com/upload/pdfs/51/40/5140c4ea37c46af4766d2602eb3747d8.pdf" target="_blank" rel="noopener">AT8236 datasheet</a>: 6.5–40 V, 3.5 A, 4.2 A trip, truth table, VIH 2 V</li>
+    <li><a href="https://www.amazon.com/Dual-Channel-Controller-Forward-Reverse-Stepless/dp/B0GSDFD3WM" target="_blank" rel="noopener">AT8236 dual module listing</a>: pin names, 5–17 V, 23 × 18.5 mm</li>
+    <li><a href="https://www.aliexpress.us/item/3256813156444371.html" target="_blank" rel="noopener">TB6612 &amp; AT8236 module (BOM link)</a></li>
+    <li><a href="https://curiousscientist.tech/blog/mt6701-magnetic-encoder" target="_blank" rel="noopener">MT6701 walkthrough (Curious Scientist)</a>: I2C address 0x06, MODE pin</li>
+    <li><a href="https://community.simplefoc.com/t/mt6701-module-only-breaks-out-i2c-how-do-you-check-sensor-boards-before-buying/8365" target="_blank" rel="noopener">SimpleFOC forum on MT6701 boards</a>: VDD, GND, OUT, SCL, SDA pads</li>
+    <li><a href="https://www.aliexpress.us/item/3256808280097253.html" target="_blank" rel="noopener">MT6701 encoder module (BOM link)</a></li>
+    <li><a href="https://www.tinkered.ai/components/mpu6050" target="_blank" rel="noopener">MPU-6050 / GY-521 pinout</a>: 3.3–5 V with regulator, 0x68</li>
+    <li><a href="https://www.aliexpress.us/item/3256807803434052.html" target="_blank" rel="noopener">MPU-6050 module (BOM link)</a></li>
+    <li><a href="https://www.amazon.com/OVONIC-2200mAh-Battery-Airplane-Helicopter/dp/B08R72ZF6N" target="_blank" rel="noopener">Ovonic 3S 2200 mAh listing</a>: 35C, XT60, 75 × 33 × 25 mm</li>
+    <li><a href="https://www.amazon.com/Mriuuod-3V-12V-Electric-Science-Experiments/dp/B0BWJ29YN2" target="_blank" rel="noopener">280 motor listing</a>: 3–12 V, 0.38 A rated</li>
+  </ol>
+</section>
+
+</div>
+
+<script>
+/* ===== Single source of truth: parts, harnesses, pins ===== */
+const COMP = {
+  pi:   {name:"Orange Pi 4 Pro", part:"4 GB · Allwinner A733 · 5 V/3 A", role:"Runs the drive code. Talks to the laptop over Wi-Fi 6, drives all 8 motors through 8 PWM + 8 DIR pins, and reads the 4 encoders and the IMU over 4 I2C buses.", box:[215,420,225,170]},
+  pdh:  {name:"Power hub", part:"Matek Mini Power Hub (Haoyull copy) · 36 × 36 mm", role:"Splits battery power to four 20 A pad pairs (one per H-bridge) and regulates 5 V/3 A for the Orange Pi. Its 12 V output is left unused on 3S.", box:[625,450,90,90]},
+  bat:  {name:"Battery", part:"Ovonic 3S LiPo · 11.1 V 2200 mAh 35C · XT60", role:"12.6 V full, 11.1 V nominal; stop driving near 9.9 V (3.3 V per cell).", box:[450,575,95,205]},
+  xt60: {name:"XT60", part:"Battery connector", role:"Mates the battery lead to the hub's XT60 pigtail.", box:[478,377,44,22]},
+  sw:   {name:"Switch", part:"Added: loop key or 20 A+ switch", role:"Recommended addition so the robot can be powered off without unplugging the XT60.", box:[566,376,40,24], rec:true},
+  mpu:  {name:"MPU-6050", part:"GY-521 module · I2C 0x68", role:"Gyro and accelerometer for later use. Shares I2C0 with the front-left encoder. Code can stub it for now.", box:[455,234,90,40]},
+  hbF:  {name:"HB-F", part:"AT8236 dual H-bridge · front edge", role:"Channel A drives M1 (front-left module), channel B drives M2 (front-right module).", box:[470,130,60,60]},
+  hbR:  {name:"HB-R", part:"AT8236 dual H-bridge · right edge", role:"Channel A drives M3 (front-right module), channel B drives M4 (back-right module).", box:[815,470,60,60]},
+  hbB:  {name:"HB-B", part:"AT8236 dual H-bridge · back edge", role:"Channel A drives M5 (back-right module), channel B drives M6 (back-left module).", box:[470,815,60,60]},
+  hbL:  {name:"HB-L", part:"AT8236 dual H-bridge · left edge", role:"Channel A drives M7 (back-left module), channel B drives M8 (front-left module).", box:[110,470,60,60]},
+  encFL:{name:"ENC FL", part:"MT6701 · I2C0 · 0x06", role:"Front-left steering angle, geared 2:1 off the 90T wheel gear.", box:[308,313,34,34]},
+  encFR:{name:"ENC FR", part:"MT6701 · I2C1 · 0x06", role:"Front-right steering angle, geared 2:1.", box:[658,313,34,34]},
+  encBR:{name:"ENC BR", part:"MT6701 · I2C2 · 0x06", role:"Back-right steering angle, geared 2:1.", box:[658,663,34,34]},
+  encBL:{name:"ENC BL", part:"MT6701 · I2C3 · 0x06", role:"Back-left steering angle, geared 2:1.", box:[308,663,34,34]},
+  m1:{name:"M1",mod:"FL",part:"280 motor · FL module · HB-F ch A",box:[360,128,90,64]},
+  m2:{name:"M2",mod:"FR",part:"280 motor · FR module · HB-F ch B",box:[550,128,90,64]},
+  m3:{name:"M3",mod:"FR",part:"280 motor · FR module · HB-R ch A",box:[813,360,64,90]},
+  m4:{name:"M4",mod:"BR",part:"280 motor · BR module · HB-R ch B",box:[813,550,64,90]},
+  m5:{name:"M5",mod:"BR",part:"280 motor · BR module · HB-B ch A",box:[550,813,90,64]},
+  m6:{name:"M6",mod:"BL",part:"280 motor · BL module · HB-B ch B",box:[360,813,90,64]},
+  m7:{name:"M7",mod:"BL",part:"280 motor · BL module · HB-L ch A",box:[108,550,64,90]},
+  m8:{name:"M8",mod:"FL",part:"280 motor · FL module · HB-L ch B",box:[108,360,64,90]},
+  lap:{name:"Laptop", part:"Windows · PC app", role:"Reads the Xbox controller, shows connection status, sensitivity and deadzone sliders, and the motor/encoder/H-bridge mapping. Sends commands to the Orange Pi over Wi-Fi; receives MPU data back.", box:[1050,385,230,92]},
+  pad:{name:"Xbox controller", part:"USB or Bluetooth to laptop", role:"Left stick drives, right stick rotates; − and + are Swerve Set Zero and Return to Zero.", box:[1050,575,230,70]},
+};
+// Motor control: [motor, module, hb, ch, pwmPin, pwmFn, dirPin, dirGpio]
+const MOTORS = [
+  ["m1","FL","hbF","A",29,"PWM0-0 · PD0",31,"PD1"],
+  ["m2","FR","hbF","B",33,"PWM0-2 · PD2",22,"PD23"],
+  ["m3","FR","hbR","A",35,"PWM0-3 · PD3",24,"PE12"],
+  ["m4","BR","hbR","B",37,"PWM0-4 · PD4",40,"PL13"],
+  ["m5","BR","hbB","A",32,"PWM0-5 · PD5",18,"PK25"],
+  ["m6","BL","hbB","B",36,"PWM0-6 · PD6",16,"PL5"],
+  ["m7","BL","hbL","A",38,"PWM0-7 · PD7",15,"PK24"],
+  ["m8","FL","hbL","B",7,"S-PWM0-2 · PL4",13,"PL12"],
+];
+// I2C: [device, bus, sdaPin, sclPin, addr]
+const SENS = [
+  ["encFL","I2C0",3,5,"0x06"],["mpu","I2C0",3,5,"0x68"],
+  ["encFR","I2C1",27,28,"0x06"],["encBR","I2C2",19,23,"0x06"],["encBL","I2C3",26,21,"0x06"],
+];
+// Harnesses. layer drives colour; pts is the drawn route; tag is label position
+const WIRES = [
+  {id:"W1",layer:"vbat",from:"bat",to:"xt60",what:"Battery lead: + and −",gauge:"Battery's own leads (stock)",pts:[[500,575],[500,399]],tag:[500,470]},
+  {id:"W2",layer:"vbat",from:"xt60",to:"pdh",via:"sw",what:"XT60 pigtail → switch → hub BAT+ / BAT− pads",gauge:"14 AWG",pts:[[522,388],[690,388],[690,450]],tag:[544,388]},
+  {id:"W3",layer:"vbat",from:"pdh",to:"hbF",what:"Hub pad pair 1 → VM / GND",gauge:"18 AWG",pts:[[705,450],[705,220],[512,220],[512,190]],tag:[705,290]},
+  {id:"W4",layer:"vbat",from:"pdh",to:"hbR",what:"Hub pad pair 2 → VM / GND",gauge:"18 AWG",pts:[[715,490],[815,490]],tag:[765,490]},
+  {id:"W5",layer:"vbat",from:"pdh",to:"hbB",what:"Hub pad pair 3 → VM / GND",gauge:"18 AWG",pts:[[705,540],[705,800],[512,800],[512,815]],tag:[705,740]},
+  {id:"W6",layer:"vbat",from:"pdh",to:"hbL",what:"Hub pad pair 4 → VM / GND",gauge:"18 AWG",pts:[[640,450],[640,365],[196,365],[196,486],[170,486]],tag:[320,365]},
+  {id:"W7",layer:"v5",from:"pdh",to:"pi",what:"Hub 5 V BEC → header pins 2 + 4 (5 V), pin 6 (GND)",gauge:"20 AWG",pts:[[625,520],[440,520]],tag:[585,520]},
+  {id:"W8",layer:"ctl",from:"pi",to:"hbF",what:"Pins 29, 31, 33, 22 → AIN1, AIN2, BIN1, BIN2; 3V3 → VCC; GND",gauge:"26 AWG, 6 conductors",pts:[[400,420],[400,205],[488,205],[488,190]],tag:[400,300]},
+  {id:"W9",layer:"ctl",from:"pi",to:"hbR",what:"Pins 35, 24, 37, 40 → AIN1, AIN2, BIN1, BIN2; 3V3 → VCC; GND",gauge:"26 AWG, 6 conductors",pts:[[440,552],[790,552],[790,510],[815,510]],tag:[530,552]},
+  {id:"W10",layer:"ctl",from:"pi",to:"hbB",what:"Pins 32, 18, 36, 16 → AIN1, AIN2, BIN1, BIN2; 3V3 → VCC; GND",gauge:"26 AWG, 6 conductors",pts:[[300,590],[300,795],[488,795],[488,815]],tag:[300,740]},
+  {id:"W11",layer:"ctl",from:"pi",to:"hbL",what:"Pins 38, 15, 7, 13 → AIN1, AIN2, BIN1, BIN2; 3V3 → VCC; GND",gauge:"26 AWG, 6 conductors",pts:[[215,512],[170,512]],tag:[192,512]},
+  {id:"W12",layer:"i2c",from:"pi",to:"encFL",also:"mpu",what:"I2C0: pin 3 SDA, pin 5 SCL, 3V3, GND → ENC FL, branch → MPU-6050",gauge:"26 AWG, 4 conductors",pts:[[240,420],[240,330],[308,330]],branch:[[240,330],[240,254],[455,254]],dot:[240,330],tag:[240,385]},
+  {id:"W13",layer:"i2c",from:"pi",to:"encFR",what:"I2C1: pin 27 SDA, pin 28 SCL, 3V3, GND",gauge:"26 AWG, 4 conductors",pts:[[430,420],[430,330],[658,330]],tag:[560,330]},
+  {id:"W14",layer:"i2c",from:"pi",to:"encBR",what:"I2C2: pin 19 SDA, pin 23 SCL, 3V3, GND",gauge:"26 AWG, 4 conductors",pts:[[440,563],[600,563],[600,680],[658,680]],tag:[600,630]},
+  {id:"W15",layer:"i2c",from:"pi",to:"encBL",what:"I2C3: pin 26 SDA, pin 21 SCL, 3V3, GND",gauge:"26 AWG, 4 conductors",pts:[[360,590],[360,680],[342,680]],tag:[360,632]},
+  // Motor leads
+  {id:"M1",layer:"mot",from:"hbF",to:"m1",what:"AO1 / AO2 → M1",gauge:"20–22 AWG",pts:[[470,160],[450,160]]},
+  {id:"M2",layer:"mot",from:"hbF",to:"m2",what:"BO1 / BO2 → M2",gauge:"20–22 AWG",pts:[[530,160],[550,160]]},
+  {id:"M3",layer:"mot",from:"hbR",to:"m3",what:"AO1 / AO2 → M3",gauge:"20–22 AWG",pts:[[845,470],[845,450]]},
+  {id:"M4",layer:"mot",from:"hbR",to:"m4",what:"BO1 / BO2 → M4",gauge:"20–22 AWG",pts:[[845,530],[845,550]]},
+  {id:"M5",layer:"mot",from:"hbB",to:"m5",what:"AO1 / AO2 → M5",gauge:"20–22 AWG",pts:[[530,845],[550,845]]},
+  {id:"M6",layer:"mot",from:"hbB",to:"m6",what:"BO1 / BO2 → M6",gauge:"20–22 AWG",pts:[[470,845],[450,845]]},
+  {id:"M7",layer:"mot",from:"hbL",to:"m7",what:"AO1 / AO2 → M7",gauge:"20–22 AWG",pts:[[140,530],[140,550]]},
+  {id:"M8",layer:"mot",from:"hbL",to:"m8",what:"BO1 / BO2 → M8",gauge:"20–22 AWG",pts:[[140,470],[140,450]]},
+];
+// Header map: pin -> [label, kind, detail]
+const PINS = {
+  1:["3.3 V","p33","Logic rail: H-bridge VCC, encoders, MPU"],2:["5 V in","p5","From hub 5 V BEC (W7)"],
+  3:["I2C0 SDA","i2c","ENC FL + MPU · PB3"],4:["5 V in","p5","From hub 5 V BEC (W7)"],
+  5:["I2C0 SCL","i2c","ENC FL + MPU · PB2"],6:["GND","gnd","Hub 5 V BEC return (W7)"],
+  7:["PWM M8","pwm","S-PWM0-2 · PL4"],8:["spare","free","UART7 TX · PL6"],
+  9:["GND","gnd","Logic ground strip"],10:["spare","free","UART7 RX · PL7"],
+  11:["MPU INT","opt","Optional · PL9"],12:["spare","free","PL8"],
+  13:["DIR M8","dir","PL12"],14:["GND","gnd",""],
+  15:["DIR M7","dir","PK24"],16:["DIR M6","dir","PL5"],
+  17:["3.3 V","p33","Logic rail"],18:["DIR M5","dir","PK25"],
+  19:["I2C2 SDA","i2c","ENC BR · PE2"],20:["GND","gnd",""],
+  21:["I2C3 SCL","i2c","ENC BL · PE3"],22:["DIR M2","dir","PD23"],
+  23:["I2C2 SCL","i2c","ENC BR · PE1"],24:["DIR M3","dir","PE12"],
+  25:["GND","gnd",""],26:["I2C3 SDA","i2c","ENC BL · PE4"],
+  27:["I2C1 SDA","i2c","ENC FR · PB5"],28:["I2C1 SCL","i2c","ENC FR · PB4"],
+  29:["PWM M1","pwm","PWM0-0 · PD0"],30:["GND","gnd",""],
+  31:["DIR M1","dir","PD1"],32:["PWM M5","pwm","PWM0-5 · PD5"],
+  33:["PWM M2","pwm","PWM0-2 · PD2"],34:["GND","gnd",""],
+  35:["PWM M3","pwm","PWM0-3 · PD3"],36:["PWM M6","pwm","PWM0-6 · PD6"],
+  37:["PWM M4","pwm","PWM0-4 · PD4"],38:["PWM M7","pwm","PWM0-7 · PD7"],
+  39:["GND","gnd",""],40:["DIR M4","dir","PL13"],
+};
+const KIND = {p33:["3.3 V","var(--w-3v3)"],p5:["5 V","var(--w-5v)"],gnd:["GND","var(--w-gnd)"],pwm:["PWM","var(--w-ctl)"],dir:["DIR","var(--w-mot)"],i2c:["I2C","var(--w-i2c)"],opt:["Optional","var(--muted)"],free:["Spare","var(--rule)"]};
+const FINDINGS = [
+  {sev:"Changed",c:"var(--crit)",t:"H-bridges run from battery pads, not the 12 V output",p:"Matek's manual says the hub's 12 V regulator needs a 4–6S battery; on 3S it can't hold 12 V. It is also rated for only 2 A, while 8 motors can draw far more.",p2:"Each AT8236 takes battery voltage (9.9–12.6 V) from its own 20 A pad pair. The module accepts 5–17 V and the chip 6.5–40 V."},
+  {sev:"Changed",c:"var(--crit)",t:"Encoders on 3.3 V, not 5 V",p:"The Orange Pi's GPIO is 3.3 V and not 5 V tolerant, and MT6701 boards pull SDA/SCL up to their own supply. At 5 V the encoders would push 5 V into the Pi.",p2:"Encoders, the MPU-6050 and the H-bridge VCC pins all take 3.3 V from header pins 1/17. Only the Pi itself uses the hub's 5 V."},
+  {sev:"Decided",c:"var(--warn)",t:"8 PWM pins for 16 motor inputs",p:"Eight motors need 16 inputs, and the header has exactly 8 hardware PWM pins. Software PWM on Linux jitters.",p2:"Each motor gets one PWM pin on IN1 and one plain GPIO on IN2 for direction, with the duty inverted in reverse (code below). No extra board needed."},
+  {sev:"Decided",c:"var(--warn)",t:"One I2C bus per encoder",p:"Every MT6701 answers at 0x06, so two on one bus collide. The header offers exactly four buses: I2C0–I2C3.",p2:"One encoder per bus; the MPU-6050 (0x68) shares I2C0 with the front-left encoder."},
+  {sev:"Checked",c:"var(--ok)",t:"Current ratings hold",p:"Worst case per H-bridge is two motors, each capped by the AT8236's 4.2 A overcurrent trip: under 8.4 A against a 20 A hub pad. The battery's 35C gives 77 A continuous.",p2:"The 280 motors are rated 3–12 V; a full pack is 12.6 V, about 5% over. Cap duty near 95% if you want to stay inside the rating."},
+  {sev:"Watch",c:"var(--warn)",t:"5 V supply is at its limit",p:"The Orange Pi wants 5 V/3 A and the hub's regulator gives 3 A continuous. That fits, with little to spare for USB devices.",p2:"Never plug in the Pi's USB-C supply while it is powered from the hub. If the battery sags below the hub's 9 V minimum under stall, the Pi can brown out."},
+];
+const BUDGET = [
+  ["8 × 280 motors, rated load","8 × 0.38 A","3.0 A at battery"],
+  ["8 × 280 motors, overcurrent ceiling","8 × 4.2 A (AT8236 trip)","33.6 A max"],
+  ["Orange Pi 4 Pro","5 V × up to 3 A","≈1.6 A at battery"],
+  ["Encoders + IMU + H-bridge logic","3.3 V, under 0.1 A","from Pi's 3.3 V"],
+  ["Battery capability","2.2 Ah × 35C","77 A continuous"],
+  ["Run time, cruising (estimate)","≈4.6 A draw","≈23–29 min"],
+];
+const ADDS = [
+  ["Loop key or 20 A+ switch","In W2, between XT60 and hub"],
+  ["470–1000 µF low-ESR capacitor, 25 V+","Across the hub's BAT+ / BAT− pads"],
+  ["0.1 µF ceramic capacitor × 8","Across each motor's terminals"],
+  ["XT60 pigtail, 14 AWG","Hub battery pads to the battery's XT60"],
+  ["Small 3.3 V / GND strip (perfboard)","Near the Pi: one feed from pin 17 + pin 9, fanned to W8–W15"],
+  ["LiPo voltage alarm","Battery balance plug (the Pi has no ADC)"],
+];
+const POWER = [
+  ["Battery → hub","W1, W2","9.9–12.6 V","up to 35 A","14 AWG"],
+  ["Hub pad pair 1 → HB-F","W3","battery","≤ 8.4 A","18 AWG"],
+  ["Hub pad pair 2 → HB-R","W4","battery","≤ 8.4 A","18 AWG"],
+  ["Hub pad pair 3 → HB-B","W5","battery","≤ 8.4 A","18 AWG"],
+  ["Hub pad pair 4 → HB-L","W6","battery","≤ 8.4 A","18 AWG"],
+  ["Hub 5 V BEC → Pi pins 2, 4 / 6","W7","5.0 V","≤ 3 A","20 AWG"],
+  ["Pi 3.3 V (pins 1, 17) → logic","W8–W15","3.3 V","< 0.1 A","26 AWG"],
+  ["Hub 12 V BEC","—","not used","—","—"],
+];
+
+/* ===== Draw ===== */
+const NS="http://www.w3.org/2000/svg";
+const svg=document.getElementById("diagram");
+function el(tag,attrs,parent){const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);(parent||svg).appendChild(e);return e}
+function txt(x,y,s,cls,parent,anchor){const t=el("text",{x,y,class:cls,"text-anchor":anchor||"middle"},parent);t.textContent=s;return t}
+const ptsStr=p=>p.map(q=>q.join(",")).join(" ");
+
+// chassis outline (CAD overhead, simplified)
+el("rect",{x:30,y:30,width:940,height:940,rx:210,class:"chassis-fill"});
+[[190,190],[810,190],[190,810],[810,810]].forEach(([cx,cy])=>{
+  el("circle",{cx,cy,r:152,class:"chassis-fill"});
+  el("circle",{cx,cy,r:122,class:"gear"});
+  el("circle",{cx,cy,r:48,class:"chassis"});
+});
+// module labels
+[["FL module",190,198],["FR module",810,198],["BL module",190,818],["BR module",810,818]].forEach(([s,x,y])=>txt(x,y,s,"annot strong"));
+// encoder gears (45T)
+[[325,330],[675,330],[325,680],[675,680]].forEach(([cx,cy])=>el("circle",{cx,cy,r:52,class:"gear"}));
+// front marker
+el("polygon",{points:"500,-38 488,-18 512,-18",class:"front"});
+txt(500,-4,"FRONT","annot strong");
+// side panel divider
+el("line",{x1:1010,y1:300,x2:1010,y2:720,class:"chassis"});
+txt(1165,318,"OFF-ROBOT","annot strong");
+
+const layers={};
+function drawWire(w){
+  const g=el("g",{class:"wgroup","data-wire":w.id,"data-layer":w.layer});
+  const color={vbat:"var(--w-vbat)",v5:"var(--w-5v)",ctl:"var(--w-ctl)",i2c:"var(--w-i2c)",mot:"var(--w-mot)"}[w.layer];
+  g.style.color=color;
+  const lines=[w.pts].concat(w.branch?[w.branch]:[]);
+  lines.forEach(p=>el("polyline",{points:ptsStr(p),class:"wire halo"},g));
+  lines.forEach(p=>el("polyline",{points:ptsStr(p),class:"wire core "+w.layer},g));
+  if(w.dot) el("circle",{cx:w.dot[0],cy:w.dot[1],r:6,class:"jdot"},g);
+  if(w.tag){
+    const tg=el("g",{class:"wtag"},g);
+    const wdt=w.id.length>2?38:30;
+    el("rect",{x:w.tag[0]-wdt/2,y:w.tag[1]-10,width:wdt,height:20,rx:4},tg);
+    txt(w.tag[0],w.tag[1]+4.5,w.id,"",tg);
+  }
+  const title=el("title",{},g);title.textContent=w.id+": "+w.what;
+  g.addEventListener("click",e=>{e.stopPropagation();select({wire:w.id})});
+  (layers[w.layer]=layers[w.layer]||[]).push(g);
+}
+// draw order: signals under power
+["i2c","ctl","mot","v5","vbat"].forEach(L=>WIRES.filter(w=>w.layer===L).forEach(drawWire));
+
+function drawComp(id){
+  const c=COMP[id],[x,y,w,h]=c.box;
+  const g=el("g",{class:"comp"+(c.rec?" rec":""),"data-comp":id,tabindex:0,role:"button","aria-label":c.name+", "+c.part});
+  el("rect",{x,y,width:w,height:h,rx:id.startsWith("m")&&!["mpu"].includes(id)?6:3,class:"box"},g);
+  const cx=x+w/2,cy=y+h/2;
+  if(id==="bat"){
+    const t=txt(cx,cy-6,"3S LiPo 2200","t1",g);t.setAttribute("transform",`rotate(-90 ${cx} ${cy})`);
+    const t2=txt(cx+16,cy+4,"11.1 V · XT60","t2",g);t2.setAttribute("transform",`rotate(-90 ${cx+16} ${cy+4})`);
+  } else if(id==="pi"){
+    el("rect",{x:x+14,y:y+4,width:w-28,height:13,class:"hdr"},g);
+    txt(cx,y+14,"40-pin header (side approx.)","t2",g);
+    txt(cx,cy+2,"Orange Pi 4 Pro","t1",g);
+    txt(cx,cy+22,"4 GB · Wi-Fi 6","t2",g);
+    txt(x+w-8,y+h-10,"USB/LAN →","t2",g,"end");
+    txt(x+8,y+h-10,"← microSD","t2",g,"start");
+  } else if(id==="pdh"){
+    [[x+8,y+8],[x+w-18,y+8],[x+8,y+h-18],[x+w-18,y+h-18]].forEach(([px,py])=>el("rect",{x:px,y:py,width:10,height:10,fill:"var(--w-vbat)",opacity:.5},g));
+    txt(cx,cy-2,"Power hub","t1",g);txt(cx,cy+15,"Matek Mini","t2",g);
+  } else if(id.startsWith("enc")){
+    txt(cx,cy+4,"E","t1",g);
+    txt(cx,y-22,c.name,"t2",g);
+    txt(cx,y-8,c.part.split(" · ")[1],"t2",g);
+  } else if(id.startsWith("hb")){
+    txt(cx,cy+2,c.name,"t1",g);txt(cx,cy+18,"AT8236","t2",g);
+  } else if(/^m\d$/.test(id)){
+    txt(cx,cy+2,c.name,"t1",g);txt(cx,cy+18,c.mod,"t2",g);
+  } else if(id==="xt60"){
+    txt(cx,cy+4,"XT60","t2",g);
+  } else if(id==="sw"){
+    txt(cx,cy+4,"SW","t2",g);
+  } else if(id==="mpu"){
+    txt(cx,cy+2,"MPU-6050","t1",g);txt(cx,cy+16,"0x68","t2",g);
+  } else {
+    txt(cx,cy-2,c.name,"t1",g);txt(cx,cy+16,c.part,"t2",g);
+  }
+  g.addEventListener("click",e=>{e.stopPropagation();select({comp:id})});
+  g.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();select({comp:id})}});
+}
+Object.keys(COMP).forEach(drawComp);
+// H-bridge channel letters
+[["A",462,148],["B",538,148],["A",833,464],["B",833,542],["A",538,860],["B",462,860],["A",128,542],["B",128,464]].forEach(([s,x,y])=>txt(x,y,s,"annot"));
+// off-robot links
+el("line",{x1:1165,y1:575,x2:1165,y2:477,stroke:"var(--muted)","stroke-width":2,"stroke-dasharray":"6 5"});
+txt(1175,532,"USB / Bluetooth","annot",null,"start");
+function wifi(x,y){for(const r of [8,15,22])el("path",{d:`M ${x-r*0.75} ${y-r*0.66} A ${r} ${r} 0 0 1 ${x+r*0.75} ${y-r*0.66}`,fill:"none",stroke:"var(--muted)","stroke-width":2});el("circle",{cx:x,cy:y,r:2.5,fill:"var(--muted)"})}
+wifi(234,462); txt(248,456,"Wi-Fi","t2",null,"start").setAttribute("class","annot");
+wifi(1070,368); txt(1092,350,"Wi-Fi 6 link to the Orange Pi","annot",null,"start"); txt(1092,366,"commands out, MPU data back","annot",null,"start");
+txt(1165,690,"Battery stays on-robot; laptop","annot");txt(1165,707,"and controller never touch it.","annot");
+
+/* ===== Selection & panel ===== */
+const panel=document.getElementById("panel");
+function defaultPanel(){
+  panel.innerHTML=`<div class="label">Trace a connection</div>
+  <h3>Click any part or wire</h3>
+  <p class="hint">The drawing dims everything not connected to your choice, and this panel lists each harness with its pins.</p>
+  <ul class="conn">
+    <li><span class="tag" style="color:var(--w-vbat)">W1–W6</span><span>Battery power, 14–18 AWG</span></li>
+    <li><span class="tag" style="color:var(--w-5v)">W7</span><span>Hub 5 V to the Pi header</span></li>
+    <li><span class="tag" style="color:var(--w-ctl)">W8–W11</span><span>PWM + DIR to each H-bridge</span></li>
+    <li><span class="tag" style="color:var(--w-i2c)">W12–W15</span><span>One I2C bus per encoder</span></li>
+    <li><span class="tag" style="color:var(--w-mot)">M1–M8</span><span>H-bridge outputs to motors</span></li>
+  </ul>
+  <p class="hint">Grounds run inside every harness and meet at the hub's battery negative.</p>`;
+}
+function wiresFor(id){return WIRES.filter(w=>w.from===id||w.to===id||w.via===id||w.also===id)}
+function connList(ws){return `<ul class="conn">${ws.map(w=>`<li><span class="tag" style="color:${getComputedStyle(document.querySelector(`[data-wire="${w.id}"]`)).color}">${w.id}</span><span>${COMP[w.from].name} → ${COMP[w.to].name}${w.also?" + "+COMP[w.also].name:""}: ${w.what}. <span class="mono">${w.gauge}</span></span></li>`).join("")}</ul>`}
+function select(s){
+  document.querySelectorAll(".comp").forEach(g=>g.classList.remove("sel","dim"));
+  document.querySelectorAll(".wgroup").forEach(g=>g.classList.remove("sel","dim"));
+  if(!s){defaultPanel();return}
+  let ws,comps;
+  if(s.comp){
+    const c=COMP[s.comp]; ws=wiresFor(s.comp);
+    comps=new Set([s.comp]);ws.forEach(w=>{comps.add(w.from);comps.add(w.to);w.via&&comps.add(w.via);w.also&&comps.add(w.also)});
+    let extra="";
+    const mot=MOTORS.find(m=>m[0]===s.comp);
+    if(mot) extra=`<p class="hint">Header: PWM pin <b class="mono">${mot[4]}</b> (${mot[5]}), DIR pin <b class="mono">${mot[6]}</b> (${mot[7]}).</p>`;
+    const hbm=MOTORS.filter(m=>m[2]===s.comp);
+    if(hbm.length) extra=`<ul>${hbm.map(m=>`<li>Ch ${m[3]} → ${COMP[m[0]].name} (${m[1]}): ${m[3]}IN1 ← pin ${m[4]}, ${m[3]}IN2 ← pin ${m[6]}</li>`).join("")}<li>VM / GND ← hub pad pair; VCC ← 3.3 V</li></ul>`;
+    const sn=SENS.find(x=>x[0]===s.comp);
+    if(sn) extra=`<p class="hint">${sn[1]}: SDA pin <b class="mono">${sn[2]}</b>, SCL pin <b class="mono">${sn[3]}</b>, address <b class="mono">${sn[4]}</b>, VCC 3.3 V.</p>`;
+    panel.innerHTML=`<div class="label">Part</div><h3>${c.name}</h3><p class="part">${c.part}</p>${c.role?`<p style="font-size:14px">${c.role}</p>`:""}${extra}${ws.length?`<div class="label">Harnesses</div>${connList(ws)}`:""}<button class="reset" type="button">Show everything</button>`;
+  } else {
+    const w=WIRES.find(x=>x.id===s.wire); ws=[w];
+    comps=new Set([w.from,w.to]);w.via&&comps.add(w.via);w.also&&comps.add(w.also);
+    panel.innerHTML=`<div class="label">Harness</div><h3>${w.id}</h3><p class="part">${COMP[w.from].name} → ${COMP[w.to].name}${w.also?" + "+COMP[w.also].name:""}</p><p style="font-size:14px">${w.what}.</p><p class="hint">Wire: <span class="mono">${w.gauge}</span></p><button class="reset" type="button">Show everything</button>`;
+  }
+  const ids=new Set(ws.map(w=>w.id));
+  document.querySelectorAll(".wgroup").forEach(g=>g.classList.add(ids.has(g.dataset.wire)?"sel":"dim"));
+  document.querySelectorAll(".comp").forEach(g=>{if(g.dataset.comp===s.comp||(s.wire&&false))g.classList.add("sel");else if(!comps.has(g.dataset.comp))g.classList.add("dim")});
+  panel.querySelector(".reset").addEventListener("click",()=>select(null));
+}
+svg.addEventListener("click",()=>select(null));
+defaultPanel();
+
+document.querySelectorAll(".chip").forEach(b=>b.addEventListener("click",()=>{
+  const on=b.getAttribute("aria-pressed")!=="true";b.setAttribute("aria-pressed",on);
+  (layers[b.dataset.layer]||[]).forEach(g=>g.style.display=on?"":"none");
+}));
+
+/* ===== Findings ===== */
+document.getElementById("findings").innerHTML=FINDINGS.map(f=>`<article class="find" style="--c:${f.c}"><div class="sev">${f.sev}</div><h3>${f.t}</h3><p>${f.p}</p><p>${f.p2}</p></article>`).join("");
+
+/* ===== Header ===== */
+document.getElementById("pinLegend").innerHTML=Object.values(KIND).map(([n,c])=>`<span><i style="--c:${c}"></i>${n}</span>`).join("");
+let ph="";
+for(let r=0;r<20;r++){
+  const a=2*r+1,b=2*r+2,[la,ka,da]=PINS[a],[lb,kb,db]=PINS[b];
+  ph+=`<div class="plabel l" title="${da}"><b>${la}</b> <span class="mono">${da}</span></div>`;
+  ph+=`<div class="pin${a===1?" sq":""}" style="--c:${KIND[ka][1]}" title="Pin ${a}: ${la}${da?" · "+da:""}">${a}</div>`;
+  ph+=`<div class="pin" style="--c:${KIND[kb][1]}" title="Pin ${b}: ${lb}${db?" · "+db:""}">${b}</div>`;
+  ph+=`<div class="plabel" title="${db}"><b>${lb}</b> <span class="mono">${db}</span></div>`;
+}
+document.getElementById("pins").innerHTML=ph;
+
+/* ===== Tables ===== */
+const tbl=(id,head,rows)=>{document.getElementById(id).innerHTML=`<thead><tr>${head.map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join("")}</tr>`).join("")}</tbody>`};
+const P=(n,k)=>`<span class="pill" style="--c:${KIND[k][1]}">pin ${n}</span>`;
+tbl("tMotor",["Motor","Module","H-bridge","Inputs","PWM (IN1)","DIR (IN2)","Outputs","Harness"],MOTORS.map(m=>{
+  const hb=COMP[m[2]].name,w=WIRES.find(x=>x.layer==="ctl"&&x.to===m[2]).id;
+  return [`<b>${COMP[m[0]].name}</b>`,m[1],`${hb} ch ${m[3]}`,`<span class="mono">${m[3]}IN1 / ${m[3]}IN2</span>`,`${P(m[4],"pwm")} <span class="mono">${m[5]}</span>`,`${P(m[6],"dir")} <span class="mono">${m[7]}</span>`,`<span class="mono">${m[3]}O1 / ${m[3]}O2</span>`,`<span class="mono">${w}</span>`]}));
+tbl("tSens",["Device","Bus","SDA","SCL","Address","Power","Harness"],SENS.map(s=>{
+  const w=WIRES.find(x=>x.to===s[0]||x.also===s[0]).id;
+  return [`<b>${COMP[s[0]].name}</b> <span class="mono" style="color:var(--muted)">${s[0]==="mpu"?"GY-521":"MT6701"}</span>`,s[1],P(s[2],"i2c"),P(s[3],"i2c"),`<span class="mono">${s[4]}</span>`,s[0]==="mpu"?"3.3 V (5 V also safe)":"3.3 V only",`<span class="mono">${w}</span>`]}));
+tbl("tPower",["Run","Harness","Voltage","Current","Wire"],POWER.map(r=>[r[0],`<span class="mono">${r[1]}</span>`,r[2],r[3],`<span class="mono">${r[4]}</span>`]));
+tbl("tBudget",["Load","Basis","At the battery"],BUDGET);
+tbl("tAdd",["Part","Where"],ADDS);
+tbl("tWires",["Tag","From","To","Conductors","Wire"],WIRES.map(w=>[`<b class="mono">${w.id}</b>`,COMP[w.from].name,COMP[w.to].name+(w.also?" + "+COMP[w.also].name:"")+(w.via?` (via ${COMP[w.via].name})`:""),w.what,`<span class="mono">${w.gauge}</span>`]));
+</script>
+
+</body></html>
