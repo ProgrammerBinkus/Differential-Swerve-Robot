@@ -30,7 +30,7 @@ class FakeBoard:
         self.gpios = {}                   # line name -> FakeGPIO
         self.i2c_buses = []               # bus paths opened
         self.gpio_lines = {"/dev/gpiochip0": {"PD1", "PD23", "PE12", "PK24", "PK25"},
-                           "/dev/gpiochip1": {"PL5", "PL12", "PL13"}}
+                           "/dev/gpiochip1": {"PL5", "PL6", "PL12", "PL13"}}
         self.registers = {}               # (address, register) -> bytes the device answers with
         self.writes = []                  # (address, register, value) for single-register writes
         self.missing_addresses = set()
@@ -246,7 +246,7 @@ def test_open_hardware_opens_every_pin_in_the_wiring_table(board):
     hardware = open_hardware(config, simulate=False)
     assert set(hardware.outputs) == {f"{hb}.{ch}" for hb in HBRIDGE_IDS for ch in HBRIDGE_CHANNELS}
     assert set(board.pwms) == {(0, 0), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6), (0, 7), (20, 2)}  # S-PWM is pwmchip20
-    assert set(board.gpios) == {"PD1", "PD23", "PE12", "PL13", "PK25", "PL5", "PK24", "PL12"}
+    assert set(board.gpios) == {"PD1", "PD23", "PE12", "PK24", "PK25", "PL5", "PL13", "PL6"}
     assert all(pwm.enabled and pwm.duty_cycle == 0.0 for pwm in board.pwms.values())
     assert not any(gpio.value for gpio in board.gpios.values())     # every motor coasting
     assert board.i2c_buses == [f"/dev/i2c-{n}" for n in range(4)] + ["/dev/i2c-0"]  # 4 encoders, then the IMU
@@ -256,8 +256,8 @@ def test_open_hardware_opens_every_pin_in_the_wiring_table(board):
 
 
 def test_a_failed_open_releases_everything_already_opened(board):
-    board.gpio_lines["/dev/gpiochip1"].discard("PL12")              # the last channel, HB4.B, cannot open
-    with pytest.raises(HardwareError, match="PL12"):
+    board.gpio_lines["/dev/gpiochip1"].discard("PL6")               # the last channel, HB4.B, cannot open
+    with pytest.raises(HardwareError, match="PL6"):
         open_hardware(default_config(), simulate=False)
     assert all(not pwm.enabled and pwm.closed for pwm in board.pwms.values())
 
@@ -276,3 +276,43 @@ def test_no_header_pin_is_used_twice_or_lands_on_a_power_pin():
     assert all(1 <= pin <= 40 for pin in pins)
     imu, e1 = config["imu"], config["encoders"]["E1"]               # the IMU shares E1's bus on purpose
     assert (imu["bus"], imu["sda_pin"], imu["scl_pin"]) == (e1["bus"], e1["sda_pin"], e1["scl_pin"])
+
+
+# The Orange Pi 4 Pro's 40-pin header, from its user manual (v1.4): pin -> GPIO, and its PWM function.
+HEADER_GPIO = {3: "PB3", 5: "PB2", 7: "PL4", 8: "PL6", 10: "PL7", 11: "PL9", 12: "PL8", 13: "PL12", 15: "PK24",
+               16: "PL5", 18: "PK25", 19: "PE2", 21: "PE3", 22: "PD23", 23: "PE1", 24: "PE12", 26: "PE4",
+               27: "PB5", 28: "PB4", 29: "PD0", 31: "PD1", 32: "PD5", 33: "PD2", 35: "PD3", 36: "PD6",
+               37: "PD4", 38: "PD7", 40: "PL13"}
+HEADER_PWM = {7: "S-PWM0-2", 29: "PWM0-0", 33: "PWM0-2", 35: "PWM0-3", 37: "PWM0-4", 32: "PWM0-5",
+              36: "PWM0-6", 38: "PWM0-7"}
+
+
+def _side_by_side(a, b):
+    """True if two header pins take one 2-pin connector: across a row, or one above the other."""
+    low, high = sorted((a, b))
+    return (high - low == 1 and low % 2 == 1) or high - low == 2
+
+
+def test_hbridge_pins_match_the_orange_pi_header():
+    config = default_config()
+    for hb in HBRIDGE_IDS:
+        for channel in HBRIDGE_CHANNELS:
+            pwm, direction = config["hbridges"][hb][channel]["pwm"], config["hbridges"][hb][channel]["dir"]
+            assert HEADER_PWM[pwm["header_pin"]] == pwm["function"], (hb, channel)
+            assert HEADER_GPIO[direction["header_pin"]] == direction["name"], (hb, channel)
+            assert direction["header_pin"] not in HEADER_PWM                  # every PWM pin is needed as PWM
+    for encoder in config["encoders"].values():
+        assert {encoder["sda_pin"], encoder["scl_pin"]} <= set(HEADER_GPIO)
+
+
+def test_every_pwm_pin_with_a_free_neighbor_has_its_direction_pin_beside_it():
+    config = default_config()
+    i2c = {pin for e in config["encoders"].values() for pin in (e["sda_pin"], e["scl_pin"])}
+    free = set(HEADER_GPIO) - set(HEADER_PWM) - i2c                       # pins a direction line can use
+    pairs = {(s["pwm"]["header_pin"], s["dir"]["header_pin"])
+             for hb in config["hbridges"].values() for s in hb.values()}
+    together = {pwm for pwm, direction in pairs if _side_by_side(pwm, direction)}
+    assert together == {7, 29, 38}
+    # No other PWM pin could have been paired: each has no free pin beside it, or only pin 31 (taken by 29).
+    for pwm in set(HEADER_PWM) - together:
+        assert {pin for pin in free if _side_by_side(pwm, pin)} <= {31}

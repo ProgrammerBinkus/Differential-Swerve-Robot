@@ -108,18 +108,22 @@ def _hbridge_channel(pwm_chip: int, pwm_channel: int, pwm_pin: int, pwm_function
 
 _DEFAULT_CONFIG: dict[str, Any] = {
     "version": 1,
-    # Physical wiring of each H-bridge channel (wiring sheet E-01, motor table).
+    # Physical wiring of each H-bridge channel (wiring sheet E-02).
     # Edited in this file only, because changing it means rewiring the robot.
+    # Where a PWM pin has a free GPIO right beside it, that GPIO is its channel's direction pin, so
+    # the pair takes one 2-pin connector: 29+31, 38+40 and 7+8. The other PWM pins sit between PWM
+    # and ground pins (header rows 15-20), so their channels need two separate 1-pin connectors.
     "hbridges": {
-        "HB1": {"A": _hbridge_channel(0, 0, 29, "PWM0-0", "PD1", 31),
+        "HB1": {"A": _hbridge_channel(0, 0, 29, "PWM0-0", "PD1", 31),       # paired
                 "B": _hbridge_channel(0, 2, 33, "PWM0-2", "PD23", 22)},
         "HB2": {"A": _hbridge_channel(0, 3, 35, "PWM0-3", "PE12", 24),
-                "B": _hbridge_channel(0, 4, 37, "PWM0-4", "PL13", 40)},
+                "B": _hbridge_channel(0, 4, 37, "PWM0-4", "PK24", 15)},
         "HB3": {"A": _hbridge_channel(0, 5, 32, "PWM0-5", "PK25", 18),
                 "B": _hbridge_channel(0, 6, 36, "PWM0-6", "PL5", 16)},
-        "HB4": {"A": _hbridge_channel(0, 7, 38, "PWM0-7", "PK24", 15),
+        "HB4": {"A": _hbridge_channel(0, 7, 38, "PWM0-7", "PL13", 40),      # paired
                 # S-PWM is the PWM block at 0x7023000, which the Orange Pi 1.0.8 image numbers pwmchip20.
-                "B": _hbridge_channel(20, 2, 7, "S-PWM0-2", "PL12", 13)},
+                # PL6 doubles as UART7 TX, which stays off (no uart7 overlay).
+                "B": _hbridge_channel(20, 2, 7, "S-PWM0-2", "PL6", 8)},     # paired
     },
     # Which H-bridge channel each motor is plugged into.
     "motors": {
