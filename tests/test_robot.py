@@ -116,6 +116,45 @@ def test_stopping_while_enabled_returns_the_wheels_to_zero(robot):
     assert calls == [1]
 
 
+def _power_off_runs(robot, monkeypatch, returncode=0, stderr=""):
+    import subprocess
+
+    import robot.robot as robot_module
+    calls = []
+    monkeypatch.setattr(robot_module.subprocess, "run", lambda args, **kw: (
+        calls.append(args), subprocess.CompletedProcess(args, returncode, "", stderr))[1])
+    robot._hardware._plant = None   # pretend to be the real Pi (the simulator refuses)
+    return calls
+
+
+def test_power_off_runs_systemctl_poweroff_while_disabled(robot, monkeypatch):
+    run(robot, 0.05, DriveCommand(seq=1, enabled=False))
+    calls = _power_off_runs(robot, monkeypatch)
+    assert robot._power_off({"tag": "power"})["ok"]
+    assert calls == [["sudo", "-n", "/usr/bin/systemctl", "poweroff"]]
+
+
+def test_power_off_is_refused_while_enabled(robot, monkeypatch):
+    run(robot, 0.05, DriveCommand(seq=1, enabled=False))
+    run(robot, 0.05, DriveCommand(seq=2, enabled=True))
+    calls = _power_off_runs(robot, monkeypatch)
+    assert not robot._power_off({"tag": "power"})["ok"]
+    assert calls == []
+
+
+def test_power_off_is_refused_by_the_simulator(robot):
+    run(robot, 0.05, DriveCommand(seq=1, enabled=False))
+    result = robot._power_off({"tag": "power"})
+    assert not result["ok"] and "simulator" in result["message"]
+
+
+def test_power_off_reports_a_missing_permission(robot, monkeypatch):
+    run(robot, 0.05, DriveCommand(seq=1, enabled=False))
+    _power_off_runs(robot, monkeypatch, returncode=1, stderr="sudo: a password is required")
+    result = robot._power_off({"tag": "power"})
+    assert not result["ok"] and "password is required" in result["message"] and "sudoers.sh" in result["message"]
+
+
 def test_braking_keeps_the_steering_angles(robot):
     run(robot, 0.05, DriveCommand(seq=1, enabled=False))
     run(robot, 1.0, DriveCommand(seq=2, enabled=True, vy=0.5))  # wheels sideways

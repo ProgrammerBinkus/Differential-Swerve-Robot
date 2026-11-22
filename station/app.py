@@ -178,6 +178,7 @@ class StationApp:
             set_field_forward=self._set_field_forward,
             view_changed=self._set_view,
             check_motors=self._check_motors,
+            power_off=self._power_off,
         ))
         self.mapping_tab = MappingTab(pages, apply=lambda update: self._send_config(update, "mapping"))
         self.tuning_tab = TuningTab(pages, apply=lambda update: self._send_config(update, "tuning"))
@@ -291,6 +292,9 @@ class StationApp:
             if msg.get("tag") == "field":
                 self._field_pending_until = 0.0  # show what the robot actually has now
             self.terminal.write("robot", "; ".join([text, *errors]), "INFO" if ok else "ERROR")
+            if ok and msg.get("tag") == "power":
+                self.terminal.write("station", "Wait until the Pi's green light stops blinking (about 15 s), "
+                                               "then switch the battery off.", "WARNING")
         elif kind == MsgType.LOG:
             self.terminal.write("robot", str(msg.get("message", "")), str(msg.get("level", "INFO")))
         elif kind == LINK_EVENT:
@@ -447,6 +451,16 @@ class StationApp:
         else:
             self.terminal.write("station", "Not connected: motor check not started", "WARNING")
 
+    def _power_off(self) -> None:
+        """Ask the robot to shut the Pi down (it refuses unless disabled, and in the simulator)."""
+        if self._enabled:
+            self.terminal.write("station", "Disable the robot before powering off the Pi", "WARNING")
+            return
+        if self.link.send_control({"type": MsgType.POWER_OFF, "tag": "power"}):
+            self.terminal.write("station", "Power off sent")
+        else:
+            self.terminal.write("station", "Not connected: the Pi was not powered off", "WARNING")
+
     def _set_view(self, view: str) -> None:
         self.settings.view = view
         self.settings.save()
@@ -507,6 +521,8 @@ class StationApp:
         summary_text, summary_level = summarize_parts(statuses)
         self.drive_tab.show_parts(summary_text, summary_level,
                                   can_check=self._enabled and bool(telemetry) and telemetry["mode"] == "drive")
+        self.drive_tab.show_power(control and bool(telemetry) and telemetry["mode"] == "disabled"
+                                  and not telemetry.get("simulated") and not self._enabled)
         imu = telemetry.get("imu") if telemetry else None
         heading = imu.get("heading") if imu else None
         self.drive_tab.robot_view.update_heading(heading)

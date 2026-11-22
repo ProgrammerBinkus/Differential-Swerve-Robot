@@ -31,12 +31,8 @@ RestartSec=3
 [Install]
 WantedBy=multi-user.target
 EOF
-# Let orangepi start, stop and restart only this service without a password (for code updates).
-cat > /etc/sudoers.d/swerve-robot <<'EOF'
-orangepi ALL=(root) NOPASSWD: /usr/bin/systemctl restart swerve-robot.service, /usr/bin/systemctl stop swerve-robot.service, /usr/bin/systemctl start swerve-robot.service
-EOF
-chmod 440 /etc/sudoers.d/swerve-robot
-visudo -cf /etc/sudoers.d/swerve-robot
+# Let orangepi start, stop and restart only this service, and power off, without a password.
+bash sudoers.sh
 systemctl daemon-reload
 systemctl enable --now swerve-robot.service
 sleep 5

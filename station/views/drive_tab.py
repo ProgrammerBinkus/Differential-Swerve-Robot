@@ -32,6 +32,10 @@ CHECK_LABEL = "Check motors"
 CHECK_CONFIRM_LABEL = "Start check"
 CHECK_CONFIRM_TEXT = "Each motor spins alone for a moment. Wheels off the ground? Click Start check."
 CHECK_CONFIRM_MS = 5000
+CONTROL_HINT = "Space disables at any time. Set Zero works while disabled; Return to Zero before switching off."
+POWER_LABEL = "Power off Pi"
+POWER_CONFIRM_LABEL = "Power off"
+POWER_CONFIRM_TEXT = "Shuts the Pi down. Click Power off to confirm, then switch off once the green light stops."
 
 # "Robot faces ..." choices for Set field forward, in degrees from "away from the driver station"
 # (counter-clockwise positive, as seen from above).
@@ -50,6 +54,7 @@ class DriveTabActions:
     set_field_forward: Callable[[float], None]
     view_changed: Callable[[str], None]
     check_motors: Callable[[], None]
+    power_off: Callable[[], None]
 
 
 class LayerChip(tk.Frame):
@@ -232,9 +237,20 @@ class DriveTab(ttk.Frame):
         self._zero_button.grid(row=0, column=0, sticky="ew", padx=(0, 4))
         self._home_button = ttk.Button(buttons, text="Return to Zero  +", command=self._actions.return_to_zero)
         self._home_button.grid(row=0, column=1, sticky="ew", padx=(4, 0))
-        ttk.Label(card, text="Space disables at any time. Set Zero works while disabled; "
-                             "Return to Zero before switching off.",
-                  style="CardMuted.TLabel", wraplength=360).grid(row=4, column=0, sticky="w", pady=(10, 0))
+        # The hint, with Power off beside it. Power off takes two clicks; while armed, the hint says
+        # what happens next.
+        hint_row = ttk.Frame(card, style="Plain.TFrame")
+        hint_row.grid(row=4, column=0, sticky="ew", pady=(10, 0))
+        hint_row.columnconfigure(0, weight=1)
+        self._control_hint = ttk.Label(hint_row, text=CONTROL_HINT, style="CardMuted.TLabel", wraplength=245,
+                                       justify="left")
+        self._control_hint.grid(row=0, column=0, sticky="w")
+        # takefocus=False: the space bar must only ever disable, never press this button.
+        self._power_button = ttk.Button(hint_row, text=POWER_LABEL, command=self._on_power_clicked,
+                                        takefocus=False, width=12)
+        self._power_button.grid(row=0, column=1, sticky="e", padx=(8, 0))
+        self._power_armed_job: Optional[str] = None
+        self._power_button.state(["disabled"])
 
         # Parts: a dot and one line for what the robot can see, and the motor check (the only way to
         # test motors and H-bridges). Each part's own dot is on the drawing.
@@ -256,6 +272,28 @@ class DriveTab(ttk.Frame):
         self._check_armed_job: Optional[str] = None
         self.show_parts("Robot not connected", "unknown", can_check=False)
         return card
+
+    def _on_power_clicked(self) -> None:
+        if self._power_armed_job is None:
+            self._power_button.configure(text=POWER_CONFIRM_LABEL)
+            self._control_hint.configure(text=POWER_CONFIRM_TEXT, foreground=theme.WARN)
+            self._power_armed_job = self.after(CHECK_CONFIRM_MS, self._disarm_power)
+            return
+        self._disarm_power()
+        self._actions.power_off()
+
+    def _disarm_power(self) -> None:
+        if self._power_armed_job is not None:
+            self.after_cancel(self._power_armed_job)
+            self._power_armed_job = None
+        self._power_button.configure(text=POWER_LABEL)
+        self._control_hint.configure(text=CONTROL_HINT, foreground=theme.MUTED)
+
+    def show_power(self, can_power_off: bool) -> None:
+        """Power off is offered only with the real robot connected and disabled."""
+        if not can_power_off and self._power_armed_job is not None:
+            self._disarm_power()
+        self._power_button.state(["!disabled"] if can_power_off else ["disabled"])
 
     def _on_check_clicked(self) -> None:
         if self._check_armed_job is None:

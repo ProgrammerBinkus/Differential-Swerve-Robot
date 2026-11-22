@@ -6,6 +6,7 @@ import enum
 import logging
 import math
 import queue
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -21,6 +22,10 @@ from robot.swerve.mixing import RateLimiter
 from robot.swerve.motor_check import MotorCheck
 
 log = logging.getLogger(__name__)
+
+# The orangepi user may run exactly this without a password (pi_setup/sudoers.sh). systemd then stops
+# this program like any other service: disabled, so nothing moves on the way out.
+POWER_OFF_COMMAND = ["sudo", "-n", "/usr/bin/systemctl", "poweroff"]
 
 
 class Mode(enum.Enum):
@@ -312,6 +317,8 @@ class Robot:
                 event.client.send(self._set_field_forward(event.msg))
             elif kind == MsgType.CHECK_MOTORS:
                 event.client.send(self._start_check(event.msg, now))
+            elif kind == MsgType.POWER_OFF:
+                event.client.send(self._power_off(event.msg))
             else:
                 log.debug("Ignoring control message of type %r", kind)
 
@@ -376,6 +383,28 @@ class Robot:
         self._pose_epoch += 1
         log.info("Field forward set: the robot faces %+.0f° from away-from-the-driver", facing)
         return result(True, "Field forward set")
+
+    def _power_off(self, msg: dict[str, Any]) -> dict[str, Any]:
+        """Shut the Pi down, so the battery can be switched off without risking the SD card."""
+        def result(ok: bool, message: str) -> dict[str, Any]:
+            return {"type": MsgType.RESULT, "request": MsgType.POWER_OFF, "tag": msg.get("tag"),
+                    "ok": ok, "message": message, "errors": []}
+
+        if self._hardware.simulated:
+            return result(False, "The simulator has no Pi to power off")
+        if self._mode is not Mode.DISABLED:
+            return result(False, "Disable the robot before powering off the Pi")
+        try:
+            done = subprocess.run(POWER_OFF_COMMAND, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                                  timeout=10)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return result(False, f"Could not power off: {exc}")
+        if done.returncode != 0:
+            reason = (done.stderr or done.stdout).strip() or f"exit code {done.returncode}"
+            return result(False, f"Could not power off ({reason}). Run pi_setup/sudoers.sh on the Pi once "
+                                 "to allow it.")
+        log.warning("Powering off the Pi: wait for its green light to stop blinking, then switch off")
+        return result(True, "The Pi is shutting down")
 
     def _config_message(self) -> dict[str, Any]:
         return {"type": MsgType.CONFIG, "config": self.config, "protocol": PROTOCOL_VERSION}
