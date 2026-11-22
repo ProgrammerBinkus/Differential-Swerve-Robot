@@ -16,6 +16,7 @@ from typing import Any, Optional
 from common.config import (
     HBRIDGE_CHANNELS, MODULE_NAMES, module_of_encoder, module_of_motor, motor_channel,
 )
+from station.part_status import part_statuses
 
 MODULE_CENTERS = {"FL": (190, 190), "FR": (810, 190), "BL": (190, 810), "BR": (810, 810)}
 MODULE_POD_RADIUS = 152
@@ -163,6 +164,7 @@ def describe(part_id: str, config: Optional[dict[str, Any]],
              telemetry: Optional[dict[str, Any]]) -> PartInfo:
     """Information for the side panel, combining static facts with the live config and telemetry."""
     modules = (telemetry or {}).get("modules", {})
+    statuses = part_statuses(config, telemetry)
 
     if part_id in MODULE_NAMES:
         lines = []
@@ -173,6 +175,7 @@ def describe(part_id: str, config: Optional[dict[str, Any]],
                 hb_id, channel = motor_channel(config, motor_id)
                 inverted = " (inverted)" if module[f"invert_{slot}"] else ""
                 lines.append(f"Motor {slot.upper()}: {motor_id} on {hb_id} channel {channel}{inverted}")
+                lines.append(f"    {statuses[motor_id].text}")
             encoder_id = module["encoder"]
             lines.append(f"Encoder: {encoder_id} on {config['encoders'][encoder_id]['bus']}"
                          f"{' (inverted)' if module['invert_encoder'] else ''}")
@@ -234,9 +237,6 @@ def describe(part_id: str, config: Optional[dict[str, Any]],
                          f"{' · heading inverted' if imu['invert_yaw'] else ''}")
         data = (telemetry or {}).get("imu")
         if data:
-            status = {"ok": "working", "calibrating": "calibrating (keep the robot still)",
-                      "absent": "not found", "fault": "not answering"}.get(data["status"], data["status"])
-            lines.append(f"Status: {status}")
             if data.get("heading") is not None:
                 lines.append(f"Field heading {data['heading']:+.1f}° · turning {data['rate']:+.1f}°/s")
             if "accel" in data:
@@ -244,4 +244,7 @@ def describe(part_id: str, config: Optional[dict[str, Any]],
                 lines.append(f"Accel {ax:+.2f} {ay:+.2f} {az:+.2f} g · {data.get('temp', 0):.1f} °C")
         else:
             lines.append("No telemetry from the robot.")
+    status = statuses.get(part_id)
+    if status is not None:
+        lines.insert(0, f"Status: {status.text}")
     return PartInfo(part.title, part.subtitle, lines, part.role)

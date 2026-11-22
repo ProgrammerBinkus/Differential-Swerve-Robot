@@ -12,7 +12,7 @@ from station.keyboard import KEYMAP, key_label
 from station.parts import WIRE_LAYERS, PartInfo
 from station.settings import StationSettings
 from station.views.field_view import FieldView
-from station.views.robot_view import LAYER_COLORS, RobotView
+from station.views.robot_view import LAYER_COLORS, STATUS_COLORS, RobotView
 from station.widgets import Card, Keycap, NumberRow, Segmented, Terminal, ToggleSwitch
 
 PANEL_TEXT_WIDTH = 270
@@ -27,6 +27,11 @@ VIEW_CAPTIONS = {
     "field": "Field view, away from the driver station at top  ·  wheels and arrows on the field  ·  "
              "trail = path driven",
 }
+
+CHECK_LABEL = "Check motors"
+CHECK_CONFIRM_LABEL = "Start check"
+CHECK_CONFIRM_TEXT = "Each motor spins alone for a moment. Wheels off the ground? Click Start check."
+CHECK_CONFIRM_MS = 5000
 
 # "Robot faces ..." choices for Set field forward, in degrees from "away from the driver station"
 # (counter-clockwise positive, as seen from above).
@@ -44,6 +49,7 @@ class DriveTabActions:
     field_toggled: Callable[[bool], None]
     set_field_forward: Callable[[float], None]
     view_changed: Callable[[str], None]
+    check_motors: Callable[[], None]
 
 
 class LayerChip(tk.Frame):
@@ -229,7 +235,51 @@ class DriveTab(ttk.Frame):
         ttk.Label(card, text="Space disables at any time. Set Zero works while disabled; "
                              "Return to Zero before switching off.",
                   style="CardMuted.TLabel", wraplength=360).grid(row=4, column=0, sticky="w", pady=(10, 0))
+
+        # Parts: a dot and one line for what the robot can see, and the motor check (the only way to
+        # test motors and H-bridges). Each part's own dot is on the drawing.
+        tk.Frame(card, height=1, bg=theme.RULE).grid(row=5, column=0, sticky="ew", pady=(10, 8))
+        parts = ttk.Frame(card, style="Plain.TFrame")
+        parts.grid(row=6, column=0, sticky="ew")
+        parts.columnconfigure(1, weight=1)
+        self._parts_dot = tk.Canvas(parts, width=12, height=12, bg=theme.SHEET, highlightthickness=0)
+        self._parts_dot.create_oval(1, 1, 11, 11, fill=theme.RULE, outline="", tags="dot")
+        self._parts_dot.grid(row=0, column=0, sticky="w", padx=(0, 8))
+        self._parts_summary = ttk.Label(parts, text="", style="Card.TLabel", wraplength=215, justify="left")
+        self._parts_summary.grid(row=0, column=1, sticky="w")
+        # Two clicks: the first asks for the wheels to be off the ground. (A dialog would pause the
+        # control tick while the robot kept repeating the last stick command.)
+        # takefocus=False, like ENABLE: the space bar must only ever disable, never press this button.
+        self._check_button = ttk.Button(parts, text=CHECK_LABEL, command=self._on_check_clicked, takefocus=False,
+                                        width=12)
+        self._check_button.grid(row=0, column=2, sticky="e", padx=(8, 0))
+        self._check_armed_job: Optional[str] = None
+        self.show_parts("Robot not connected", "unknown", can_check=False)
         return card
+
+    def _on_check_clicked(self) -> None:
+        if self._check_armed_job is None:
+            self._check_button.configure(text=CHECK_CONFIRM_LABEL)
+            self._parts_summary.configure(text=CHECK_CONFIRM_TEXT, foreground=theme.WARN)
+            self._check_armed_job = self.after(CHECK_CONFIRM_MS, self._disarm_check)
+            return
+        self._disarm_check()
+        self._actions.check_motors()
+
+    def _disarm_check(self) -> None:
+        if self._check_armed_job is not None:
+            self.after_cancel(self._check_armed_job)
+            self._check_armed_job = None
+        self._check_button.configure(text=CHECK_LABEL)
+        self._parts_summary.configure(foreground=theme.INK)
+
+    def show_parts(self, summary: str, level: str, can_check: bool) -> None:
+        if not can_check and self._check_armed_job is not None:
+            self._disarm_check()
+        if self._check_armed_job is None:   # while armed, the line asks for the wheels to be up
+            self._parts_summary.configure(text=summary)
+        self._parts_dot.itemconfigure("dot", fill=STATUS_COLORS.get(level, theme.RULE))
+        self._check_button.state(["!disabled"] if can_check else ["disabled"])
 
     def _build_sticks(self, parent: tk.Misc) -> Card:
         card = Card(parent, "Joysticks")

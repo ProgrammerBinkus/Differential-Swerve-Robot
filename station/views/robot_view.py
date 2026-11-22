@@ -31,6 +31,9 @@ LAYER_COLORS = {
     "motor": theme.WIRE_MOTOR, "i2c": theme.WIRE_I2C,
 }
 _LAYER_WIDTHS = {"battery": 5.0, "motor": 3.0}  # others 3.6, as on the sheet
+STATUS_COLORS = {"ok": theme.OK, "warn": theme.WARN, "error": theme.ERROR, "unknown": theme.RULE}
+_STATUS_KINDS = ("compute", "imu", "hbridge", "motor", "encoder")  # parts the robot can report on
+_DOT_RADIUS = 10
 
 
 def heading_vector(angle_deg: float) -> tuple[float, float]:
@@ -91,6 +94,8 @@ class RobotView(tk.Canvas):
         self._wheels: dict[str, dict[str, int]] = {}
         self._dial: dict[str, int] = {}
         self._heading: Optional[float] = None
+        self._status_dots: dict[str, int] = {}
+        self._statuses: dict[str, Any] = {}
         self.bind("<Configure>", lambda _e: self._draw())
         self.tag_bind("pickable", "<Button-1>", self._on_click)
         self.bind("<Button-1>", self._on_background_click, add="+")
@@ -128,6 +133,16 @@ class RobotView(tk.Canvas):
             self.itemconfigure(dial[key], state="normal")
         self.itemconfigure(dial["text"], text=f"FIELD {round(heading_deg):+d}°")
 
+    def update_status(self, statuses: dict[str, Any]) -> None:
+        """Color each part's status dot from ``station.part_status.part_statuses`` (missing: no dot)."""
+        self._statuses = statuses
+        for part_id, dot in self._status_dots.items():
+            status = statuses.get(part_id)
+            if status is None:
+                self.itemconfigure(dot, state="hidden")
+            else:
+                self.itemconfigure(dot, state="normal", fill=STATUS_COLORS.get(status.level, theme.RULE))
+
     def select(self, part_id: Optional[str]) -> None:
         self._selected = part_id
         self._apply_selection()
@@ -162,6 +177,7 @@ class RobotView(tk.Canvas):
         self._wires.clear()
         self._wheels.clear()
         self._dial.clear()
+        self._status_dots.clear()
         s = self._scale
         size = max(9, round(17 * s))
         title_font = (theme.DISPLAY, size)
@@ -222,6 +238,14 @@ class RobotView(tk.Canvas):
                                      width=0 if upright else max(20, part.w * s - 4),
                                      tags=("pickable", f"id={part.id}"))
             self._parts[part.id] = (box, label)
+            if part.kind in _STATUS_KINDS:
+                # Status dot on the box's top-right corner: green working, red not answering,
+                # amber partly working or busy, gray not known yet.
+                r = _DOT_RADIUS
+                cx, cy = x0 + part.w, y0
+                self._status_dots[part.id] = self.create_oval(
+                    *self._points(cx - r, cy - r, cx + r, cy + r), fill=theme.RULE, outline=theme.SHEET,
+                    width=max(1, 2 * s), state="hidden", tags=("pickable", f"id={part.id}"))
 
         # Wheels, drawn last so they sit on top.
         for name, (cx, cy) in MODULE_CENTERS.items():
@@ -252,6 +276,7 @@ class RobotView(tk.Canvas):
             self.itemconfigure(f"layer-{layer}", state="hidden")
         self.update_modules(self._modules)
         self.update_heading(self._heading)
+        self.update_status(self._statuses)
         self._apply_selection()
 
     def _apply_selection(self) -> None:

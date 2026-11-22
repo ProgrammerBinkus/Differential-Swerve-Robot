@@ -14,6 +14,8 @@ from station import APP_NAME, __version__, theme
 from station.gamepad import Gamepad, GamepadState
 from station.keyboard import KeyboardDrive, is_text_input
 from station.link import LINK_EVENT, RobotLink
+from station.part_status import part_statuses
+from station.part_status import summary as summarize_parts
 from station.parts import describe
 from station.settings import StationSettings
 from station.shaping import shape_inputs
@@ -175,6 +177,7 @@ class StationApp:
             field_toggled=self._set_field_relative,
             set_field_forward=self._set_field_forward,
             view_changed=self._set_view,
+            check_motors=self._check_motors,
         ))
         self.mapping_tab = MappingTab(pages, apply=lambda update: self._send_config(update, "mapping"))
         self.tuning_tab = TuningTab(pages, apply=lambda update: self._send_config(update, "tuning"))
@@ -434,6 +437,16 @@ class StationApp:
         if not self.link.send_control({"type": MsgType.SET_FIELD_FORWARD, "tag": "field", "facing_deg": facing_deg}):
             self.terminal.write("station", "Not connected: field forward not set", "WARNING")
 
+    def _check_motors(self) -> None:
+        """Ask the robot to spin each motor alone and watch its encoder (only while enabled)."""
+        if not self._enabled:
+            self.terminal.write("station", "The motor check needs the robot enabled", "WARNING")
+            return
+        if self.link.send_control({"type": MsgType.CHECK_MOTORS, "tag": "check"}):
+            self.terminal.write("station", "Motor check sent")
+        else:
+            self.terminal.write("station", "Not connected: motor check not started", "WARNING")
+
     def _set_view(self, view: str) -> None:
         self.settings.view = view
         self.settings.save()
@@ -489,6 +502,11 @@ class StationApp:
         self.drive_tab.show_state(self._enabled, alive and self._has_input, mode, alive)
         self.drive_tab.show_inputs(vx, vy, omega)
         self.drive_tab.robot_view.update_modules(telemetry["modules"] if telemetry else None)
+        statuses = part_statuses(self._robot_config, telemetry)
+        self.drive_tab.robot_view.update_status(statuses)
+        summary_text, summary_level = summarize_parts(statuses)
+        self.drive_tab.show_parts(summary_text, summary_level,
+                                  can_check=self._enabled and bool(telemetry) and telemetry["mode"] == "drive")
         imu = telemetry.get("imu") if telemetry else None
         heading = imu.get("heading") if imu else None
         self.drive_tab.robot_view.update_heading(heading)

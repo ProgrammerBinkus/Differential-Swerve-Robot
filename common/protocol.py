@@ -26,7 +26,7 @@ TCP_PORT = 5801
 
 # Bump when messages or the config change in a way the other side must know about.
 # The robot sends it with its config; the station warns when it differs (update both to the same version).
-PROTOCOL_VERSION = 4
+PROTOCOL_VERSION = 5
 
 COMMAND_RATE_HZ = 50
 TELEMETRY_RATE_HZ = 20
@@ -41,6 +41,7 @@ class MsgType:
     GET_CONFIG = "get_config"    # station -> robot (TCP)
     SET_CONFIG = "set_config"    # station -> robot (TCP): partial update
     SET_FIELD_FORWARD = "set_field_forward"  # station -> robot (TCP): {"facing_deg": 0 | 90 | 180 | -90}
+    CHECK_MOTORS = "check_motors"  # station -> robot (TCP): spin each motor alone and watch its encoder
     CONFIG = "config"            # robot -> station (TCP): full current config
     RESULT = "result"            # robot -> station (TCP): outcome of a request
     LOG = "log"                  # robot -> station (TCP): one log record

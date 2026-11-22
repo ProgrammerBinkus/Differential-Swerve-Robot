@@ -162,6 +162,17 @@ class DiffSwerveModule:
         self._motor_b.brake()
         self._pid.reset()
 
+    def run_one_motor(self, slot: str, command: float) -> None:
+        """Drive motor ``slot`` ("a" or "b") alone, the other braked (the motor check).
+
+        With one side of the differential held, the driven motor turns the
+        steering (steer = (a - b) / 2), so the encoder shows whether it ran.
+        """
+        self.drive = self.steer = 0.0
+        active, held = (self._motor_a, self._motor_b) if slot == "a" else (self._motor_b, self._motor_a)
+        held.brake()
+        active.set(command)
+
     def hold_current_angle(self) -> None:
         """Aim at wherever the wheel is now (used on enable, so nothing jumps)."""
         if self._tracker.initialized:

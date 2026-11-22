@@ -18,6 +18,7 @@ from robot.hardware import HardwareError, open_hardware
 from robot.net import BroadcastLogHandler, CommandReceiver, ControlEvent, ControlServer
 from robot.swerve.drivetrain import Drivetrain
 from robot.swerve.mixing import RateLimiter
+from robot.swerve.motor_check import MotorCheck
 
 log = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ class Mode(enum.Enum):
     DISABLED = "disabled"   # motors brake for BRAKE_HOLD_S after being disabled, then coast
     DRIVE = "drive"         # following the driver's sticks
     HOMING = "homing"       # "Return to Zero": steering every wheel to 0 degrees
+    CHECKING = "checking"   # motor check: spinning each motor alone and watching its encoder
 
 
 class Robot:
@@ -43,6 +45,8 @@ class Robot:
       the steering angles stay put. After that the motors coast, so the robot
       can be pushed and the wheels turned by hand (for Swerve Set Zero).
     * Mapping changes and Swerve Set Zero are only accepted while disabled.
+    * The motor check only starts while enabled with the sticks centered, and
+      disabling (or the watchdog) stops it at once, like any other driving.
     * Field-relative drive needs a calibrated IMU. Without one (missing,
       calibrating, or failed) the robot drives robot-relative and says so.
     * On shutdown the wheels are steered back to zero, as the BOM requires.
@@ -94,6 +98,7 @@ class Robot:
         self._home_presses: int | None = None
         self._homing_started = 0.0
         self._brake_until = -math.inf   # braking after a disable lasts until this time
+        self._check: MotorCheck | None = None   # the running or last motor check
         self._telemetry_seq = 0
         self._loop_ms = 0.0
         self._loop_ms_max = 0.0
@@ -132,7 +137,7 @@ class Robot:
         self._drivetrain.read_sensors()
         self._hardware.imu.update(dt)
         self._track_pose(dt)
-        self._handle_control_messages()
+        self._handle_control_messages(now)
 
         command = self._receiver.poll(now)
         if command is not None:
@@ -155,6 +160,8 @@ class Robot:
                 self._drivetrain.stop()
         elif self._mode is Mode.HOMING:
             self._run_homing(now)
+        elif self._mode is Mode.CHECKING:
+            self._run_check(now)
         else:
             vx, vy, omega = (limiter.calculate(target, dt) for limiter, target in
                              zip(self._limiters, (self._command.vx, self._command.vy, self._command.omega)))
@@ -197,6 +204,9 @@ class Robot:
                     log.warning("Disabled: no commands for %.0f ms (watchdog). Braking. Enable again from the "
                                 "driver station.", self.config["watchdog_s"] * 1000)
                     self._needs_disabled_command = True
+                if self._check is not None and self._check.running:
+                    self._check.abort("the robot was disabled")
+                    log.warning("Motor check stopped: the robot was disabled")
                 self._mode = Mode.DISABLED
                 self._brake_until = now + self.BRAKE_HOLD_S
                 self._drivetrain.brake()
@@ -218,6 +228,32 @@ class Robot:
         if self._mode is Mode.DRIVE:
             for limiter in self._limiters:
                 limiter.reset()
+
+    def _start_check(self, msg: dict[str, Any], now: float) -> dict[str, Any]:
+        def result(ok: bool, message: str) -> dict[str, Any]:
+            return {"type": MsgType.RESULT, "request": MsgType.CHECK_MOTORS, "tag": msg.get("tag"),
+                    "ok": ok, "message": message, "errors": []}
+
+        if self._mode is not Mode.DRIVE:
+            return result(False, "The motor check needs the robot enabled (and its wheels off the ground)")
+        command = self._command
+        if max(abs(command.vx), abs(command.vy), abs(command.omega)) > 0.02:
+            return result(False, "Let go of the sticks before checking the motors")
+        if not self._drivetrain.any_ready:
+            return result(False, "No working encoders, so the motors can't be checked")
+        self._check = MotorCheck(self._drivetrain, self.config, now)
+        self._mode = Mode.CHECKING
+        log.info("Motor check: spinning each motor on its own for %.1f s", MotorCheck.PULSE_S)
+        return result(True, "Checking the motors")
+
+    def _run_check(self, now: float) -> None:
+        if not self._check.step(now):
+            return
+        log.info("Motor check done: %s", self._check.summary())
+        self._drivetrain.hold_current_angles()
+        for limiter in self._limiters:
+            limiter.reset()
+        self._mode = Mode.DRIVE
 
     # --------------------------------------------------------------- buttons
 
@@ -247,6 +283,9 @@ class Robot:
         if self._mode is Mode.DISABLED:
             log.warning("Return to Zero needs the robot enabled")
             return
+        if self._mode is Mode.CHECKING:
+            log.warning("Return to Zero ignored while the motor check runs")
+            return
         if not self._drivetrain.any_ready:
             log.error("Return to Zero ignored: no working encoders")
             return
@@ -256,7 +295,7 @@ class Robot:
 
     # --------------------------------------------------------- control link
 
-    def _handle_control_messages(self) -> None:
+    def _handle_control_messages(self, now: float) -> None:
         while True:
             try:
                 event: ControlEvent = self._control.inbox.get_nowait()
@@ -269,6 +308,8 @@ class Robot:
                 event.client.send(self._apply_config_update(event.msg))
             elif kind == MsgType.SET_FIELD_FORWARD:
                 event.client.send(self._set_field_forward(event.msg))
+            elif kind == MsgType.CHECK_MOTORS:
+                event.client.send(self._start_check(event.msg, now))
             else:
                 log.debug("Ignoring control message of type %r", kind)
 
@@ -302,6 +343,7 @@ class Robot:
                 return result(False, str(exc))
             self._drivetrain.stop()
             self._drivetrain = Drivetrain.from_config(self._hardware, merged)
+            self._check = None   # its results name motors by the old mapping
             log.warning("Module mapping changed; steering angles re-read from the encoders")
         else:
             self._drivetrain.apply_tuning(merged["tuning"])
@@ -362,6 +404,7 @@ class Robot:
             "simulated": self._hardware.simulated,
             "modules": self._drivetrain.telemetry(),
             "imu": self._hardware.imu.telemetry(),
+            "check": self._check.telemetry() if self._check is not None else None,
             # Field position: only the simulator knows it (the real robot has no drive encoders).
             "pose": ({"x": round(self._pose_x, 3), "y": round(self._pose_y, 3), "epoch": self._pose_epoch}
                      if self._hardware.simulated else None),
