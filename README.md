@@ -116,6 +116,8 @@ figure out why a Pi won't boot and rescue its SD card. The short version:
    ```bash
    venv/bin/python -m tools.probe_hardware
    ```
+   The robot program holds all the pins while it runs, so this (and `motor_test`) pauses the
+   `swerve-robot` service while it works and starts it again after.
    It lists every PWM chip, finds each direction pin, and reads every encoder. If a PWM chip number,
    GPIO line or I2C bus doesn't match the defaults, fix it in `robot_config.json` (written on the first
    run), or on the Mapping tab for I2C buses. The defaults come from the wiring sheet and the Orange Pi
@@ -208,8 +210,9 @@ saves on the robot and works while driving.
 
 **Zeroing:** before the very first run, line every wheel up straight by hand and press **−**. After
 that, every wheel has to be within ±90° of zero at start-up (the 2:1 encoder gearing again). **Press +
-before switching the robot off** so the wheels get parked at zero. The program also returns the wheels
-to zero when it's stopped normally, but the rocker switch cuts power instantly, so don't count on it.
+before switching the robot off** so the wheels get parked at zero. If the program gets stopped while the
+robot is enabled it parks the wheels first, but stopped while disabled (like during a code update or a
+bring-up tool) nothing moves, and the rocker switch cuts power instantly anyway, so don't count on it.
 
 **Safety rules:**
 
@@ -230,6 +233,8 @@ to zero when it's stopped normally, but the rocker switch cuts power instantly, 
 - A module whose encoder stops answering coasts until it answers again, and gets skipped by Set Zero.
 - The motor check (below) only runs while enabled with the sticks centered, and disabling stops it
   right away.
+- Stopping or restarting the robot program while disabled never moves anything, so pushing a code
+  update with `sync.ps1` is safe with your hands near the wheels.
 
 ## Driver station tabs
 

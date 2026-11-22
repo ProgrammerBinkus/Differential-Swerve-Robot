@@ -18,7 +18,7 @@ from common.config import MODULE_NAMES, MOTOR_IDS, module_of_motor
 from robot.hardware import open_hardware
 from robot.swerve.mixing import mix
 from robot.swerve.steering_angle import SteeringAngleTracker
-from tools._common import confirm_wheels_off_ground, load_config
+from tools._common import confirm_wheels_off_ground, load_config, robot_program_paused
 
 STEP_S = 0.01
 
@@ -103,16 +103,17 @@ def main() -> None:
 
     config = load_config()
     confirm_wheels_off_ground()
-    hardware = open_hardware(config, simulate=False)
-    try:
-        if args.mode == "motor":
-            test_motor(config, hardware, args.motor_id, min(abs(args.duty), 1.0), args.seconds)
-        else:
-            test_module(config, hardware, args.module, min(abs(args.amount), 1.0), args.seconds)
-    except KeyboardInterrupt:
-        print("\nStopped.")
-    finally:
-        hardware.close()
+    with robot_program_paused():
+        hardware = open_hardware(config, simulate=False)
+        try:
+            if args.mode == "motor":
+                test_motor(config, hardware, args.motor_id, min(abs(args.duty), 1.0), args.seconds)
+            else:
+                test_module(config, hardware, args.module, min(abs(args.amount), 1.0), args.seconds)
+        except KeyboardInterrupt:
+            print("\nStopped.")
+        finally:
+            hardware.close()
 
 
 if __name__ == "__main__":

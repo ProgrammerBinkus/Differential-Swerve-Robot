@@ -49,7 +49,9 @@ class Robot:
       disabling (or the watchdog) stops it at once, like any other driving.
     * Field-relative drive needs a calibrated IMU. Without one (missing,
       calibrating, or failed) the robot drives robot-relative and says so.
-    * On shutdown the wheels are steered back to zero, as the BOM requires.
+    * If the program is stopped while enabled, the wheels are steered back to
+      zero first, as the BOM requires. Stopped while disabled, nothing moves:
+      park the wheels with Return to Zero before switching off.
     """
 
     HOMING_TIMEOUT_S = 4.0
@@ -415,7 +417,11 @@ class Robot:
 
     def _shutdown(self) -> None:
         try:
-            if self._drivetrain.any_ready:
+            if self._mode is Mode.DISABLED:
+                # Motors only move while enabled, shutdown included: a code update or a bring-up tool
+                # restarts the program, often with hands near the wheels. Return to Zero (+) parks them.
+                log.info("Shutting down while disabled: wheels left where they are")
+            elif self._drivetrain.any_ready:
                 self._home_before_exit()
             else:
                 log.warning("Shutting down without returning to zero: no working encoders")

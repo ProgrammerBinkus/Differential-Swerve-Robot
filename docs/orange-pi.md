@@ -57,7 +57,8 @@ Windows). Windows itself can't read the Pi's ext4 filesystem. To remove it later
    ```
    `setup.sh` reboots the Pi at the end; wait a minute before `perms.sh`.
 8. **Check it:** `python -m tools.link_check orangepi4pro.local`, then the hardware steps in the README
-   (`tools.probe_hardware`, `tools.encoder_monitor`, `tools.motor_test`).
+   (`tools.probe_hardware`, `tools.encoder_monitor`, `tools.motor_test`). `probe_hardware` and
+   `motor_test` pause the `swerve-robot` service while they run (it holds the pins) and start it again.
 
 ## Everyday use
 

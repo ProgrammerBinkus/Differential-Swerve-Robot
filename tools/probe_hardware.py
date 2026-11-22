@@ -12,7 +12,7 @@ import os
 
 from common.config import ENCODER_IDS, HBRIDGE_CHANNELS, HBRIDGE_IDS
 from robot.hardware.gpio import chip_and_line, sunxi_number
-from tools._common import load_config
+from tools._common import load_config, robot_program_paused
 
 OK, BAD = "  ok ", "  !! "
 
@@ -104,9 +104,11 @@ def probe_i2c(config: dict) -> None:
 
 def main() -> None:
     config = load_config()
-    probe_pwm(config)
-    probe_gpio(config)
-    probe_i2c(config)
+    # The robot program holds the direction pins while it runs, which would make them look missing.
+    with robot_program_paused():
+        probe_pwm(config)
+        probe_gpio(config)
+        probe_i2c(config)
 
 
 if __name__ == "__main__":

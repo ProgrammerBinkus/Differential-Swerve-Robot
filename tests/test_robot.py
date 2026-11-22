@@ -93,6 +93,29 @@ def test_watchdog_trip_brakes(robot):
     assert all(o.braking for o in outputs(robot))
 
 
+def _count_homing(robot):
+    calls = []
+    original = robot._home_before_exit
+    robot._home_before_exit = lambda: (calls.append(1), original())
+    return calls
+
+
+def test_stopping_while_disabled_does_not_move_the_wheels(robot):
+    run(robot, 0.05, DriveCommand(seq=1, enabled=False))
+    calls = _count_homing(robot)
+    robot._shutdown()
+    assert calls == []
+    assert all(o.output == 0.0 for o in outputs(robot))
+
+
+def test_stopping_while_enabled_returns_the_wheels_to_zero(robot):
+    run(robot, 0.05, DriveCommand(seq=1, enabled=False))
+    run(robot, 0.05, DriveCommand(seq=2, enabled=True))
+    calls = _count_homing(robot)
+    robot._shutdown()
+    assert calls == [1]
+
+
 def test_braking_keeps_the_steering_angles(robot):
     run(robot, 0.05, DriveCommand(seq=1, enabled=False))
     run(robot, 1.0, DriveCommand(seq=2, enabled=True, vy=0.5))  # wheels sideways
