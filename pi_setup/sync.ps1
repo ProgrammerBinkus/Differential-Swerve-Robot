@@ -6,7 +6,8 @@ param([string]$PiHost = "orangepi4pro.local")
 $src = Split-Path -Parent $PSScriptRoot
 $tar = Join-Path $env:TEMP "robot-sync.tar"
 tar.exe -cf $tar -C $src --exclude=__pycache__ common robot tools tests main.py requirements-robot.txt README.md pytest.ini
-$opts = @("-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=15")
+# -4: orangepi4pro.local also resolves to IPv6 addresses, and SSH over those can stall on this network.
+$opts = @("-4", "-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=15")
 scp -q @opts $tar "orangepi@${PiHost}:robot-sync.tar"
 ssh @opts "orangepi@$PiHost" "cd ~/robot && tar -xf ~/robot-sync.tar && rm ~/robot-sync.tar && { [ ! -f robot_config.json ] || venv/bin/python -m tools.sync_hbridge_pins; } && sudo -n systemctl restart swerve-robot.service && echo 'synced and restarted'"
 Remove-Item $tar
