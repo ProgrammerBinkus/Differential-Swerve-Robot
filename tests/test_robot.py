@@ -162,3 +162,16 @@ def test_braking_keeps_the_steering_angles(robot):
     run(robot, 1.0, DriveCommand(seq=3, enabled=False))
     after = [m.angle_rad for m in robot._drivetrain.modules]
     assert after == pytest.approx(before, abs=0.05)
+
+
+def test_stop_request_ends_the_loop_promptly(robot):
+    """SIGTERM (systemctl stop) must end the program, not hang until systemd kills it."""
+    import threading
+    import time as _time
+    worker = threading.Thread(target=robot.run, daemon=True)
+    worker.start()
+    _time.sleep(0.1)
+    for _ in range(50):          # hammer it: the old Event-based stop could deadlock here
+        robot.request_stop()
+    worker.join(timeout=3.0)
+    assert not worker.is_alive()

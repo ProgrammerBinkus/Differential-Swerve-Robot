@@ -7,7 +7,6 @@ import logging
 import math
 import queue
 import subprocess
-import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -91,7 +90,10 @@ class Robot:
         if self.config["field_relative"] and self._hardware.imu.status == "absent":
             log.warning("Field-relative drive is on but no IMU was found; driving robot-relative")
 
-        self._stop = threading.Event()
+        # A plain flag, not a threading.Event: request_stop runs in a signal handler, and an
+        # Event.set() there can deadlock against the loop's own Event.wait() (both take the
+        # Event's non-reentrant lock), which left the program ignoring SIGTERM until killed.
+        self._stop_requested = False
         self._mode = Mode.DISABLED
         self._needs_disabled_command = True  # see the class docstring
         self._field_heading_ok = True         # for logging changes in field-relative availability
@@ -113,7 +115,7 @@ class Robot:
     # ------------------------------------------------------------------ loop
 
     def request_stop(self) -> None:
-        self._stop.set()
+        self._stop_requested = True
 
     def run(self) -> None:
         log.info("Robot running at %d Hz%s", self.config["loop_hz"],
@@ -121,7 +123,7 @@ class Robot:
         next_tick = last = time.perf_counter()
         tick = 0
         try:
-            while not self._stop.is_set():
+            while not self._stop_requested:
                 started = time.perf_counter()
                 self._step(started, started - last)
                 last = started
@@ -133,7 +135,7 @@ class Robot:
                 next_tick += self._period_s
                 delay = next_tick - time.perf_counter()
                 if delay > 0:
-                    self._stop.wait(delay)
+                    time.sleep(delay)
                 elif delay < -5 * self._period_s:
                     next_tick = time.perf_counter()  # fell far behind: restart the schedule
         finally:

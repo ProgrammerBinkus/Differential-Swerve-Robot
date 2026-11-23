@@ -10,6 +10,7 @@ from wpimath.controller import PIDController
 from wpimath.geometry import Rotation2d
 from wpimath.kinematics import SwerveModuleState
 
+from common.config import ENCODER_COUNTS
 from robot.hardware.encoder import AngleSensor
 from robot.hardware.motor import MotorOutput
 from robot.swerve.mixing import clamp, mix
@@ -40,6 +41,10 @@ class DiffSwerveModule:
     """
 
     MAX_CONSECUTIVE_READ_ERRORS = 10  # 50 ms at 200 Hz
+    # The most the encoder can really move in one loop: 1/16 of a turn is 11 degrees of
+    # steering in 5 ms (over 6 module turns a second, twice the simulator's full-power
+    # rate). A reading further than this from the last good one is I2C noise, not motion.
+    MAX_STEP_PER_READ = ENCODER_COUNTS // 16
 
     def __init__(self, name: str, motor_a: MotorOutput, motor_b: MotorOutput, encoder: AngleSensor,
                  module_config: dict[str, Any], tuning: dict[str, float], period_s: float) -> None:
@@ -53,7 +58,8 @@ class DiffSwerveModule:
         self._pid = PIDController(0.0, 0.0, 0.0, period_s)
         self._pid.enableContinuousInput(-math.pi, math.pi)
         self._target_rad: Optional[float] = None
-        self._read_errors = 0
+        self._read_errors = 0   # reads in a row that failed or were ignored
+        self.rejected_reads = 0
 
         self.raw: Optional[int] = None
         self.fault = False
@@ -93,6 +99,13 @@ class DiffSwerveModule:
                 self.fault = True
                 log.error("%s: encoder stopped answering (%s); module disabled", self.name, exc)
             return
+        if self._tracker.initialized and self._is_impossible_jump(raw):
+            self._read_errors += 1
+            self.rejected_reads += 1
+            if self.rejected_reads == 1 or self.rejected_reads % 100 == 0:
+                log.warning("%s: ignored an encoder reading that jumped too far (%d so far)",
+                            self.name, self.rejected_reads)
+            return
         if self.fault:
             log.warning("%s: encoder answering again; check the wheel angle before driving", self.name)
             self.fault = False
@@ -101,6 +114,18 @@ class DiffSwerveModule:
         self._tracker.update(raw)
         if self._target_rad is None:
             self._target_rad = self._tracker.angle_rad
+
+    def _is_impossible_jump(self, raw: int) -> bool:
+        """True if ``raw`` is further from the last good reading than the wheel could have turned.
+
+        The allowance grows with each read missed or ignored since, so a wheel that really
+        did move fast is followed again within a few loops. Once it reaches half a turn every
+        reading is possible, so after a long gap (or a fault) the encoder is simply trusted,
+        as it always was. The very first reading, at start-up, is never checked: there is
+        nothing to compare it with.
+        """
+        allowance = self.MAX_STEP_PER_READ * (self._read_errors + 1)
+        return allowance < ENCODER_COUNTS // 2 and abs(self._tracker.step_to(raw)) > allowance
 
     # -------------------------------------------------------------- planning
 

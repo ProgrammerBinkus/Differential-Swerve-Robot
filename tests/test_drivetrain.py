@@ -186,3 +186,70 @@ def test_home_never_reports_done_with_no_working_encoders(rig):
     run(rig, 0.1, lambda d: None)
     assert not drivetrain.any_ready
     assert drivetrain.home() is False
+
+
+# ---------------------------------------------------- encoder glitches (I2C noise)
+
+HALF_TURN = 16384 // 2
+
+
+def test_a_reading_half_a_turn_off_is_ignored(rig):
+    """One corrupted reading must not move the angle, or leave it 180 degrees out afterwards."""
+    hardware, drivetrain = rig
+    encoder, fl = hardware.encoders["E2"], drivetrain.modules[0]
+    good = encoder.raw
+    before = fl.angle_rad
+    encoder.raw = (good + HALF_TURN - 3) % 16384   # the worst case for the turn counting
+    drivetrain.read_sensors()
+    assert fl.angle_rad == before
+    assert fl.rejected_reads == 1
+    encoder.raw = (good + 2) % 16384
+    drivetrain.read_sensors()
+    assert fl.angle_rad == pytest.approx(before, abs=math.radians(0.1))
+    assert not fl.fault
+
+
+def test_ordinary_motion_is_never_ignored(rig):
+    run(rig, 2.0, lambda d: d.drive(0.0, 1.0, 1.0))
+    run(rig, 2.0, lambda d: d.drive(0.0, -1.0, -1.0))
+    assert all(m.rejected_reads == 0 for m in rig[1].modules)
+
+
+def test_start_up_accepts_any_first_reading():
+    config = default_config()
+    hardware = open_hardware(config, simulate=True)
+    drivetrain = Drivetrain.from_config(hardware, config)
+    hardware.encoders["E2"].raw = (config["modules"]["FL"]["offset"] + 3000) % 16384
+    drivetrain.read_sensors()
+    fl = drivetrain.modules[0]
+    assert fl.ready and fl.rejected_reads == 0
+    assert math.degrees(fl.angle_rad) == pytest.approx(3000 * 180 / 16384, abs=0.1)
+
+
+def test_a_wheel_that_really_jumped_is_followed_again():
+    """If the wheel really did move far (pushed by hand while a read was lost), trust it after a few loops."""
+    config = default_config()
+    hardware = open_hardware(config, simulate=True)
+    drivetrain = Drivetrain.from_config(hardware, config)
+    drivetrain.read_sensors()
+    encoder, fl = hardware.encoders["E2"], drivetrain.modules[0]
+    encoder.raw = (encoder.raw + 5000) % 16384   # 55 degrees of steering
+    for _ in range(8):
+        drivetrain.read_sensors()
+    assert 0 < fl.rejected_reads < 8
+    assert not fl.fault
+    assert fl.raw == encoder.raw
+
+
+def test_failed_reads_widen_the_allowance(rig):
+    """After missed reads the wheel may have moved further, so a bigger step is allowed."""
+    hardware, drivetrain = rig
+    encoder, fl = hardware.encoders["E2"], drivetrain.modules[0]
+    encoder.fail = True
+    for _ in range(3):
+        drivetrain.read_sensors()
+    encoder.fail = False
+    encoder.raw = (encoder.raw + 3 * 1024) % 16384   # 3 reads' worth of fast steering
+    drivetrain.read_sensors()
+    assert fl.rejected_reads == 0
+    assert fl.raw == encoder.raw

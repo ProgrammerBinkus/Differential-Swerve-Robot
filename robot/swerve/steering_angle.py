@@ -48,6 +48,12 @@ class SteeringAngleTracker:
     def angle_rad(self) -> float:
         return self._total * TAU / (self._counts * self._ratio)
 
+    def step_to(self, raw: int) -> int:
+        """Encoder counts from the last reading to ``raw``, the short way round (before ``invert``)."""
+        if self._last_raw is None:
+            raise RuntimeError("no earlier reading to step from")
+        return (raw - self._last_raw + self._half) % self._counts - self._half
+
     def update(self, raw: int) -> None:
         if self._last_raw is None:
             relative = (raw - self._offset) % self._counts
@@ -55,8 +61,7 @@ class SteeringAngleTracker:
                 relative -= self._counts  # now in [-half, half): within +/-90 degrees of zero
             self._total = self._sign * relative
         else:
-            step = (raw - self._last_raw + self._half) % self._counts - self._half
-            self._total += self._sign * step
+            self._total += self._sign * self.step_to(raw)
         self._last_raw = raw
 
     def zero_here(self) -> int:

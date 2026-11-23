@@ -60,3 +60,10 @@ def test_zero_here():
     assert degrees(tracker) == 0.0
     tracker.update(5000 + COUNTS // 4)
     assert degrees(tracker) == pytest.approx(45.0)
+
+
+def test_step_to_takes_the_short_way_round():
+    tracker = SteeringAngleTracker()
+    tracker.update(100)
+    assert tracker.step_to(COUNTS - 100) == -200
+    assert tracker.step_to(300) == 200
