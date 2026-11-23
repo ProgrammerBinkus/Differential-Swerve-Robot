@@ -233,6 +233,14 @@ def test_mpu6050_setup_and_gyro_scale(board):
     assert imu.read_rate_dps() == pytest.approx(-1440.0)            # the fastest turn the tuning allows
 
 
+def test_temperature_scale_follows_the_chip_family():
+    imu = Mpu6050.__new__(Mpu6050)          # just the conversion, no bus
+    imu.chip_id = 0x68
+    assert imu.temperature_c(0) == pytest.approx(36.53)                # MPU-6050
+    imu.chip_id = 0x70
+    assert imu.temperature_c(0) == pytest.approx(21.0)                 # MPU-6500, as on this robot
+
+
 def test_mpu6050_missing_is_reported_not_raised_by_open_hardware(board):
     board.missing_addresses.add(0x68)
     hardware = open_hardware(default_config(), simulate=False)
@@ -249,7 +257,7 @@ def test_open_hardware_opens_every_pin_in_the_wiring_table(board):
     assert set(board.gpios) == {"PD1", "PD23", "PE12", "PK24", "PK25", "PL5", "PL13", "PL6"}
     assert all(pwm.enabled and pwm.duty_cycle == 0.0 for pwm in board.pwms.values())
     assert not any(gpio.value for gpio in board.gpios.values())     # every motor coasting
-    assert board.i2c_buses == [f"/dev/i2c-{n}" for n in range(4)] + ["/dev/i2c-0"]  # 4 encoders, then the IMU
+    assert board.i2c_buses == [f"/dev/i2c-{n}" for n in range(4)] + ["/dev/i2c-2"]  # 4 encoders, then the IMU
     hardware.close()
     assert all(not pwm.enabled and pwm.closed for pwm in board.pwms.values())
     assert all(gpio.closed for gpio in board.gpios.values())
@@ -274,8 +282,8 @@ def test_no_header_pin_is_used_twice_or_lands_on_a_power_pin():
     assert len(pins) == len(set(pins)) == 24
     assert not set(pins) & POWER_AND_GROUND_PINS
     assert all(1 <= pin <= 40 for pin in pins)
-    imu, e1 = config["imu"], config["encoders"]["E1"]               # the IMU shares E1's bus on purpose
-    assert (imu["bus"], imu["sda_pin"], imu["scl_pin"]) == (e1["bus"], e1["sda_pin"], e1["scl_pin"])
+    imu, e3 = config["imu"], config["encoders"]["E3"]               # the IMU shares E3's bus on purpose
+    assert (imu["bus"], imu["sda_pin"], imu["scl_pin"]) == (e3["bus"], e3["sda_pin"], e3["scl_pin"])
 
 
 # The Orange Pi 4 Pro's 40-pin header, from its user manual (v1.4): pin -> GPIO, and its PWM function.

@@ -5,7 +5,8 @@ the Orange Pi is at the rear (bottom of the screen) and the front is at the
 top. Coordinates are in a 1000 x 1000 box around the chassis, +y down.
 
 The IMU is the exception: it has since moved from the left side (where sheet
-E-01 shows it) to between HB2 and the power hub. Its wiring is unchanged.
+E-01 shows it) to between HB2 and the power hub, and is wired onto E3's I2C run
+(I2C2, header pins 19/23) instead of E1's.
 """
 
 from __future__ import annotations
@@ -79,8 +80,8 @@ PARTS: tuple[Part, ...] = (
          "Cuts all power. Press Return to Zero (+) before switching off, so the wheels are parked at zero "
          "for the next start-up."),
     Part("mpu", "imu", "IMU", 500, 235, 56, 44, "MPU-6050 (GY-521)",
-         "I2C0 · address 0x68 · between HB2 and the power hub",
-         "Shares I2C0 with encoder E1. Its gyro gives the heading for field-relative drive; it has no "
+         "I2C2 · address 0x68 · between HB2 and the power hub",
+         "Spliced onto encoder E3's I2C run (header pins 19/23). Its gyro gives the heading for field-relative drive; it has no "
          "compass, so set field forward from the Drive tab, and again if the heading drifts."),
     _hbridge("HB1", 160, 500), _hbridge("HB2", 500, 155),
     _hbridge("HB3", 845, 500), _hbridge("HB4", 500, 860),
@@ -125,10 +126,10 @@ WIRES: tuple[Wire, ...] = (
     Wire("W9", "control", ("pi", "HB2"), ((552, 560), (552, 200), (540, 200), (540, 172), (530, 172))),  # right of it
     Wire("W10", "control", ("pi", "HB3"), ((590, 700), (795, 700), (795, 512), (815, 512))),
     Wire("W11", "control", ("pi", "HB4"), ((512, 785), (512, 830))),
-    Wire("W12", "i2c", ("pi", "E1", "mpu"), ((420, 760), (330, 760), (330, 694)),
-         branch=((430, 560), (430, 235), (472, 235))),  # same header pins (3 and 5), run forward to the IMU
+    Wire("W12", "i2c", ("pi", "E1"), ((420, 760), (330, 760), (330, 694))),
     Wire("W13", "i2c", ("pi", "E2"), ((420, 570), (330, 570), (330, 344))),
-    Wire("W14", "i2c", ("pi", "E3"), ((563, 560), (563, 400), (680, 400), (680, 344))),
+    Wire("W14", "i2c", ("pi", "E3", "mpu"), ((563, 560), (563, 400), (680, 400), (680, 344)),
+         branch=((563, 400), (563, 235), (528, 235))),  # spliced off E3's run (pins 19/23) to the IMU
     Wire("W15", "i2c", ("pi", "E4"), ((590, 640), (680, 640), (680, 656))),
     Wire("M1", "motor", ("HB1", "M1"), ((160, 530), (160, 550))),
     Wire("M2", "motor", ("HB1", "M2"), ((160, 470), (160, 450))),

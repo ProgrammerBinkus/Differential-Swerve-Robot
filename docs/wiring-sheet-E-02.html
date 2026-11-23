@@ -218,7 +218,7 @@ pre{margin:0;background:var(--sheet);border:1px solid var(--rule);padding:12px 1
   </div>
   <div class="tblock" aria-label="Drawing information">
     <div>Sheet</div><div class="mono">E-02 · pin level</div>
-    <div>Rev</div><div class="mono">D · 2026-11-20</div>
+    <div>Rev</div><div class="mono">E · 2026-11-22</div>
     <div>Front</div><div>Side away from the Orange Pi</div>
     <div>Wheel centers</div><div class="mono">±110 mm in x and y</div>
     <div>Logic level</div><div class="mono">3.3 V on every signal</div>
@@ -266,7 +266,7 @@ pre{margin:0;background:var(--sheet);border:1px solid var(--rule);padding:12px 1
 </section>
 
 <section aria-labelledby="h-i2c">
-  <div class="sec-head"><h2 id="h-i2c">Encoders and IMU</h2><p>Every MT6701 answers at address 0x06, so each encoder has its own I2C bus. The MPU-6050 answers at 0x68 and shares I2C0 with encoder E1: its SCL and SDA wires splice into E1's.</p></div>
+  <div class="sec-head"><h2 id="h-i2c">Encoders and IMU</h2><p>Every MT6701 answers at address 0x06, so each encoder has its own I2C bus. The MPU-6050 answers at 0x68 and shares I2C2 with encoder E3: its SCL and SDA wires splice into E3's. <b>Bridge the "IIC" solder jumper on every encoder board</b>: they ship in ABZ mode, where the SDA and SCL pads are A and B pulse outputs and nothing answers on I2C.</p></div>
   <div class="cards two" id="i2cCards"></div>
 </section>
 
@@ -275,9 +275,11 @@ pre{margin:0;background:var(--sheet);border:1px solid var(--rule);padding:12px 1
   <ul class="notes">
     <li><b>Wire by the label printed on the board, not by pin position.</b> Boards sold under the same name put the same pins in different orders. The diagrams list pins by name for that reason.</li>
     <li><b>Nothing but header pins 2 and 4 touches 5 V.</b> The Orange Pi's pins are 3.3 V and are damaged by 5 V. Encoders, the IMU and the H-bridge VCC pins all run from the 3.3 V strip.</li>
-    <li><b>H-bridge VCC is required.</b> The listing calls it the logic reference input. Give it 3.3 V. If your board has one GND pin instead of two, land both ground wires on it.</li>
+    <li><b>H-bridge VCC is required.</b> The AT8236 has no logic supply pin, so on these boards VCC can only feed the chips' current-limit reference (VREF): with no VCC, that board's motors get no current. Give it 3.3 V, which with the board's 0.015 Ω sense resistors sets a limit far above the chip's own 4.2 A trip. If your board has one GND pin instead of two, land both ground wires on it.</li>
+    <li><b>Solder the 220 µF capacitor that comes with each H-bridge across its VM and GND,</b> right at the board. The stripe marks the − lead, which goes to GND; reversed, an electrolytic capacitor can burst. It soaks up the voltage spikes the motors throw back when they brake and reverse, which otherwise land on the AT8236.</li>
     <li><b>Motor lead polarity is free.</b> Either lead can go to either output of its pair. Set the direction afterwards with the invert switches on the driver station's Mapping tab, or swap the two leads.</li>
-    <li><b>Leave the encoder's OUT pad open</b>, and mount the magnet on the 45T encoder gear's axis. If a bus shows nothing at 0x06, add 4.7 kΩ pull-ups from SDA and SCL to 3.3 V at the encoder.</li>
+    <li><b>Bridge the encoder's "IIC" jumper</b> (the two small pads by the arrow), then check VCC to GND does not beep. <b>Leave Z and OUT open</b>, and mount the magnet on the 45T encoder gear's axis, centered over the chip.</li>
+    <li><b>The encoder boards have no I2C pull-ups.</b> The Pi's internal ones are enough for runs under 30 cm at 100 kHz (the <code>i2c-100khz</code> overlay). Longer runs need 4.7 kΩ from SDA and SCL to 3.3 V. The IMU board has its own, so E3's bus is covered anyway.</li>
     <li><b>Mount the MPU-6050 flat, chip side up.</b> The code reads only the vertical (Z) gyro. Its position on the chassis does not matter. If the heading falls when you turn the robot counter-clockwise, switch on "invert yaw" on the Mapping tab.</li>
     <li><b>Leave AD0, INT, XDA and XCL open</b> on the MPU-6050. AD0 open gives address 0x68, which the code expects.</li>
     <li><b>Pin 8 is a direction pin, so leave the <code>uart7</code> overlay off.</b> Pin 8 (PL6) is also UART7 TX. Turning on UART7 would take the pin away from HB4's channel B.</li>
@@ -297,7 +299,8 @@ pre{margin:0;background:var(--sheet);border:1px solid var(--rule);padding:12px 1
     <li>Battery unplugged: check continuity from every GND point back to the hub's BAT− pad, and check there is none between the 3.3 V strip and any 5 V or battery wire.</li>
     <li>Unplug the Pi's header wires and connect the battery. Measure 5.0 V on the hub's 5 V pad and battery voltage on each H-bridge's VM pin.</li>
     <li>Reconnect the Pi and boot it. Enable these overlays (names from the Orange Pi manual), then reboot:
-      <pre>i2c0 i2c1 i2c2 i2c3 pwm0 pwm2 pwm3 pwm4 pwm5 pwm6 pwm7 spwm2</pre></li>
+      <pre>i2c0 i2c1 i2c2 i2c3 pwm0 pwm2 pwm3 pwm4 pwm5 pwm6 pwm7 spwm2</pre>
+      and the user overlay <code>i2c-100khz</code> (runs the encoder buses at 100 kHz). <code>pi_setup/setup.sh</code> does both.</li>
     <li>Run <code>venv/bin/python -m tools.probe_hardware</code>. It checks all 8 PWM channels and 8 direction pins, each encoder at 0x06 and the MPU-6050 at 0x68, and drives nothing.</li>
     <li>Run <code>venv/bin/python -m tools.encoder_monitor</code> and turn each wheel by hand. Each module's reading should change, and only its own.</li>
     <li>Run <code>venv/bin/python -m tools.motor_test motor M1</code> through <code>M8</code>, then <code>module FL</code> and the other three. The tool says which invert switches to change.</li>
@@ -321,7 +324,7 @@ pre{margin:0;background:var(--sheet);border:1px solid var(--rule);padding:12px 1
     <li><a href="https://www.tinkered.ai/components/mpu6050" target="_blank" rel="noopener">MPU-6050 / GY-521 pinout</a>: VCC, GND, SCL, SDA, XDA, XCL, AD0, INT</li>
     <li><a href="http://www.mateksys.com/downloads/HUB5V12V_Manual_V3.pdf" target="_blank" rel="noopener">Matek Mini Power Hub manual</a>: pad pairs, 5 V/3 A regulator, 12 V output needs 4–6S</li>
   </ol>
-  <p class="cap">The two AliExpress listings in the BOM (AT8236 and MT6701 boards) do not publish their pin layouts, so compare the labels on your boards with the pin names here before soldering.</p>
+  <p class="cap">The BOM's AliExpress listing photos show the boards: the MT6701 board's pads are GND, A/SDA, B/SCL, Z and VCC on one edge and GND, OUT and VCC on the other, with an "IIC" mode jumper; the AT8236 board carries two AT8236 chips with 0.015 Ω sense resistors and ships with a 220 µF 35 V capacitor. Compare the labels on your boards with the pin names here before soldering.</p>
 </section>
 
 </div>
@@ -334,7 +337,7 @@ pre{margin:0;background:var(--sheet);border:1px solid var(--rule);padding:12px 1
 
 <script>
 /* ===== Data: the robot's own configuration (pins, motors, modules), plus what is fixed by the wiring ===== */
-const CFG = {"hbridges":{"HB1":{"A":{"pwm":{"chip":0,"channel":0,"header_pin":29,"function":"PWM0-0"},"dir":{"name":"PD1","header_pin":31}},"B":{"pwm":{"chip":0,"channel":2,"header_pin":33,"function":"PWM0-2"},"dir":{"name":"PD23","header_pin":22}}},"HB2":{"A":{"pwm":{"chip":0,"channel":3,"header_pin":35,"function":"PWM0-3"},"dir":{"name":"PE12","header_pin":24}},"B":{"pwm":{"chip":0,"channel":4,"header_pin":37,"function":"PWM0-4"},"dir":{"name":"PK24","header_pin":15}}},"HB3":{"A":{"pwm":{"chip":0,"channel":5,"header_pin":32,"function":"PWM0-5"},"dir":{"name":"PK25","header_pin":18}},"B":{"pwm":{"chip":0,"channel":6,"header_pin":36,"function":"PWM0-6"},"dir":{"name":"PL5","header_pin":16}}},"HB4":{"A":{"pwm":{"chip":0,"channel":7,"header_pin":38,"function":"PWM0-7"},"dir":{"name":"PL13","header_pin":40}},"B":{"pwm":{"chip":20,"channel":2,"header_pin":7,"function":"S-PWM0-2"},"dir":{"name":"PL6","header_pin":8}}}},"motors":{"M1":{"hbridge":"HB1","channel":"A"},"M2":{"hbridge":"HB1","channel":"B"},"M3":{"hbridge":"HB2","channel":"A"},"M4":{"hbridge":"HB2","channel":"B"},"M5":{"hbridge":"HB3","channel":"A"},"M6":{"hbridge":"HB3","channel":"B"},"M7":{"hbridge":"HB4","channel":"A"},"M8":{"hbridge":"HB4","channel":"B"}},"encoders":{"E1":{"bus":"/dev/i2c-0","label":"I2C0","sda_pin":3,"scl_pin":5},"E2":{"bus":"/dev/i2c-1","label":"I2C1","sda_pin":27,"scl_pin":28},"E3":{"bus":"/dev/i2c-2","label":"I2C2","sda_pin":19,"scl_pin":23},"E4":{"bus":"/dev/i2c-3","label":"I2C3","sda_pin":26,"scl_pin":21}},"modules":{"FL":{"motor_a":"M2","motor_b":"M3","encoder":"E2","invert_a":false,"invert_b":false,"invert_encoder":false,"offset":0},"FR":{"motor_a":"M4","motor_b":"M5","encoder":"E3","invert_a":false,"invert_b":false,"invert_encoder":false,"offset":0},"BL":{"motor_a":"M1","motor_b":"M8","encoder":"E1","invert_a":false,"invert_b":false,"invert_encoder":false,"offset":0},"BR":{"motor_a":"M6","motor_b":"M7","encoder":"E4","invert_a":false,"invert_b":false,"invert_encoder":false,"offset":0}},"imu":{"bus":"/dev/i2c-0","address":104,"invert_yaw":false,"sda_pin":3,"scl_pin":5},"geometry":{"module_offset_m":0.11}};
+const CFG = {"hbridges":{"HB1":{"A":{"pwm":{"chip":0,"channel":0,"header_pin":29,"function":"PWM0-0"},"dir":{"name":"PD1","header_pin":31}},"B":{"pwm":{"chip":0,"channel":2,"header_pin":33,"function":"PWM0-2"},"dir":{"name":"PD23","header_pin":22}}},"HB2":{"A":{"pwm":{"chip":0,"channel":3,"header_pin":35,"function":"PWM0-3"},"dir":{"name":"PE12","header_pin":24}},"B":{"pwm":{"chip":0,"channel":4,"header_pin":37,"function":"PWM0-4"},"dir":{"name":"PK24","header_pin":15}}},"HB3":{"A":{"pwm":{"chip":0,"channel":5,"header_pin":32,"function":"PWM0-5"},"dir":{"name":"PK25","header_pin":18}},"B":{"pwm":{"chip":0,"channel":6,"header_pin":36,"function":"PWM0-6"},"dir":{"name":"PL5","header_pin":16}}},"HB4":{"A":{"pwm":{"chip":0,"channel":7,"header_pin":38,"function":"PWM0-7"},"dir":{"name":"PL13","header_pin":40}},"B":{"pwm":{"chip":20,"channel":2,"header_pin":7,"function":"S-PWM0-2"},"dir":{"name":"PL6","header_pin":8}}}},"motors":{"M1":{"hbridge":"HB1","channel":"A"},"M2":{"hbridge":"HB1","channel":"B"},"M3":{"hbridge":"HB2","channel":"A"},"M4":{"hbridge":"HB2","channel":"B"},"M5":{"hbridge":"HB3","channel":"A"},"M6":{"hbridge":"HB3","channel":"B"},"M7":{"hbridge":"HB4","channel":"A"},"M8":{"hbridge":"HB4","channel":"B"}},"encoders":{"E1":{"bus":"/dev/i2c-0","label":"I2C0","sda_pin":3,"scl_pin":5},"E2":{"bus":"/dev/i2c-1","label":"I2C1","sda_pin":27,"scl_pin":28},"E3":{"bus":"/dev/i2c-2","label":"I2C2","sda_pin":19,"scl_pin":23},"E4":{"bus":"/dev/i2c-3","label":"I2C3","sda_pin":26,"scl_pin":21}},"modules":{"FL":{"motor_a":"M2","motor_b":"M3","encoder":"E2","invert_a":false,"invert_b":false,"invert_encoder":false,"offset":0},"FR":{"motor_a":"M4","motor_b":"M5","encoder":"E3","invert_a":false,"invert_b":false,"invert_encoder":false,"offset":0},"BL":{"motor_a":"M1","motor_b":"M8","encoder":"E1","invert_a":false,"invert_b":false,"invert_encoder":false,"offset":0},"BR":{"motor_a":"M6","motor_b":"M7","encoder":"E4","invert_a":false,"invert_b":false,"invert_encoder":false,"offset":0}},"imu":{"bus":"/dev/i2c-2","address":104,"invert_yaw":false,"sda_pin":19,"scl_pin":23},"geometry":{"module_offset_m":0.11}};
 const GPIO = {29:"PD0",33:"PD2",35:"PD3",37:"PD4",32:"PD5",36:"PD6",38:"PD7",7:"PL4",3:"PB3",5:"PB2",27:"PB5",28:"PB4",19:"PE2",23:"PE1",26:"PE4",21:"PE3"};
 const HB_INFO = {
   HB1:{where:"left edge",ctl:"W8",pwr:"W3",pad:1,e01:"HB-F"},
@@ -583,39 +586,42 @@ Object.keys(HB_INFO).forEach(hb => {
 /* ===== Encoders and IMU ===== */
 function encoderRows(id, withKeys){
   const e = CFG.encoders[id], t = ENC_INFO[id].tag;
+  // Pad names as printed on the board: SCL/SDA share pads with the ABZ outputs B/A (IIC jumper bridged).
   return [
-    {lp:"VDD", l:node("3V3 strip","","p33",`${t}-1`,"3.3 V supply",{group:`Orange Pi to ${id}${id==="E1"?" and the IMU":""} (${t})`})},
+    {lp:"VCC", l:node("3V3 strip","","p33",`${t}-1`,"3.3 V supply",{group:`Orange Pi to ${id}${id==="E3"?" and the IMU":""} (${t})`})},
     {lp:"GND", l:node("GND strip","","gnd",`${t}-2`,"Ground")},
+    {lp:"B/SCL", key: withKeys ? "scl" : undefined, l:piPin(e.scl_pin,`${e.label} SCL`,"scl",`${t}-3`,"I2C clock")},
+    {lp:"A/SDA", key: withKeys ? "sda" : undefined, l:piPin(e.sda_pin,`${e.label} SDA`,"sda",`${t}-4`,"I2C data")},
+    {lp:"Z", l:nc("leave open")},
     {lp:"OUT", l:nc("leave open")},
-    {lp:"SCL", key: withKeys ? "scl" : undefined, l:piPin(e.scl_pin,`${e.label} SCL`,"scl",`${t}-3`,"I2C clock")},
-    {lp:"SDA", key: withKeys ? "sda" : undefined, l:piPin(e.sda_pin,`${e.label} SDA`,"sda",`${t}-4`,"I2C data")},
   ];
 }
 (function(){
-  const e1 = CFG.encoders.E1, mod = moduleOfEncoder("E1");
-  card(document.getElementById("i2cCards"),"E1 and the IMU","MT6701 encoder and MPU-6050 (GY-521) · both on I2C0",[
-    `E1 measures the <b>${MODULE_NAME[mod]}</b> module's steering angle.`,
-    "The IMU's SCL and SDA join E1's wires at the dots. Splice them anywhere along the run.",
+  const e3 = CFG.encoders.E3, mod = moduleOfEncoder("E3");
+  card(document.getElementById("i2cCards"),"E3 and the IMU","MT6701 encoder and MPU-6050 (GY-521) · both on I2C2",[
+    `E3 measures the <b>${MODULE_NAME[mod]}</b> module's steering angle.`,
+    "Bridge E3's IIC jumper first.",
+    "The IMU's SCL and SDA join E3's wires at the dots. Splice them anywhere along the run.",
     "A line crossing another without a dot is not connected.",
-    "Harness <span class=\"mono\">W12</span>: 26 AWG, under 30 cm.",
-  ],{label:`I2C bus 0: encoder E1 and the MPU-6050 share header pin ${e1.sda_pin} for SDA and pin ${e1.scl_pin} for SCL. Both take 3.3 volts and ground from the strip. The encoder's OUT pad and the IMU's XDA, XCL, AD0 and INT pins are left open.`,
+    "Harness <span class=\"mono\">W14</span>: 26–28 AWG, under 30 cm.",
+  ],{label:`I2C bus 2: encoder E3 and the MPU-6050 share header pin ${e3.sda_pin} for SDA and pin ${e3.scl_pin} for SCL. Both take 3.3 volts and ground from the strip. The encoder's Z and OUT pads and the IMU's XDA, XCL, AD0 and INT pins are left open.`,
     devices:[
-      {name:"E1",sub:`MT6701 · 0x06 · ${mod} module`,rows:encoderRows("E1",true)},
+      {name:"E3",sub:`MT6701 · 0x06 · ${mod} module`,rows:encoderRows("E3",true)},
       {name:"IMU",sub:"MPU-6050 (GY-521) · 0x68",rows:[
-        {lp:"VCC", l:node("3V3 strip","","p33","W12-5","3.3 V supply")},
-        {lp:"GND", l:node("GND strip","","gnd","W12-6","Ground")},
-        {lp:"SCL", l:{type:"splice",to:"scl",lane:0,kind:"scl",id:"W12-7",what:"I2C clock (shared)",into:`W12-3 (pin ${e1.scl_pin}, I2C0 SCL)`,viaPin:e1.scl_pin}},
-        {lp:"SDA", l:{type:"splice",to:"sda",lane:1,kind:"sda",id:"W12-8",what:"I2C data (shared)",into:`W12-4 (pin ${e1.sda_pin}, I2C0 SDA)`,viaPin:e1.sda_pin}},
+        {lp:"VCC", l:node("3V3 strip","","p33","W14-5","3.3 V supply")},
+        {lp:"GND", l:node("GND strip","","gnd","W14-6","Ground")},
+        {lp:"SCL", l:{type:"splice",to:"scl",lane:0,kind:"scl",id:"W14-7",what:"I2C clock (shared)",into:`W14-3 (pin ${e3.scl_pin}, I2C2 SCL)`,viaPin:e3.scl_pin}},
+        {lp:"SDA", l:{type:"splice",to:"sda",lane:1,kind:"sda",id:"W14-8",what:"I2C data (shared)",into:`W14-4 (pin ${e3.sda_pin}, I2C2 SDA)`,viaPin:e3.sda_pin}},
         {lp:"XDA", l:nc("leave open")},
         {lp:"XCL", l:nc("leave open")},
         {lp:"AD0", l:nc("leave open (0x68)")},
         {lp:"INT", l:nc("leave open")},
       ]},
     ],gaugeL:"26 AWG"});
-  const rest = ["E2","E3","E4"];
-  card(document.getElementById("i2cCards"), "E2, E3 and E4", "MT6701 encoders · one I2C bus each", rest.map(id =>
+  const rest = ["E1","E2","E4"];
+  card(document.getElementById("i2cCards"), "E1, E2 and E4", "MT6701 encoders · one I2C bus each", rest.map(id =>
     `<b>${id}</b>: ${CFG.encoders[id].label}, ${MODULE_NAME[moduleOfEncoder(id)]} module, harness <span class="mono">${ENC_INFO[id].tag}</span>.`
-  ).concat(["Each harness: 4 wires, 26 AWG, under 30 cm."]),
+  ).concat(["Bridge each board's IIC jumper.", "Each harness: 4 wires, 26–28 AWG, under 30 cm."]),
   {label:"Encoders E2, E3 and E4, each on its own I2C bus: " + rest.map(id => `${id} SDA to header pin ${CFG.encoders[id].sda_pin} and SCL to pin ${CFG.encoders[id].scl_pin}`).join("; ") + ". Each takes 3.3 volts and ground from the strip, with OUT left open.",
    devices: rest.map(id => ({name:id,sub:`MT6701 · 0x06 · ${moduleOfEncoder(id)} module`,rows:encoderRows(id,false)})),gaugeL:"26 AWG"});
 })();

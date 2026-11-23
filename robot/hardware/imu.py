@@ -1,7 +1,8 @@
 """MPU-6050 gyro and accelerometer, and the robot's heading.
 
-Wiring (sheet E-01): GY-521 board on I2C0 (header pins 3 SDA / 5 SCL),
-address 0x68, sharing the bus with encoder E1, powered from 3.3 V.
+Wiring: GY-521 board spliced onto encoder E3's run, so on I2C2 (header pins
+19 SDA / 23 SCL), address 0x68, powered from 3.3 V. This robot's board carries
+an MPU-6500 (WHO_AM_I 0x70), which shares the MPU-6050's registers.
 
 The heading comes from integrating the Z-axis (vertical) gyro. The MPU-6050
 has no magnetometer, so it measures turning, not compass direction: the
@@ -129,6 +130,7 @@ class Mpu6050:
     ACCEL_LSB_PER_G = 16384.0   # +/-2 g range
     # Chips sold as MPU-6050 boards also include MPU-6500/9250 clones with other IDs; all share these registers.
     KNOWN_IDS = {0x68: "MPU-6050", 0x70: "MPU-6500", 0x71: "MPU-9250", 0x73: "MPU-9255", 0x98: "clone"}
+    MPU6500_FAMILY = {0x70, 0x71, 0x73}
 
     def __init__(self, bus_path: str, address: int = 0x68) -> None:
         from periphery import I2C, I2CError
@@ -156,6 +158,7 @@ class Mpu6050:
 
     def _start(self) -> None:
         chip = self._read(self.WHO_AM_I, 1)[0]
+        self.chip_id = chip
         log.info("IMU WHO_AM_I = 0x%02x (%s)", chip, self.KNOWN_IDS.get(chip, "unknown, continuing"))
         self._write(self.PWR_MGMT_1, 0x01)    # wake up, clock from the X gyro (steadier than the internal one)
         self._write(self.CONFIG, 0x03)        # digital low-pass filter ~44 Hz: smooths vibration
@@ -172,7 +175,13 @@ class Mpu6050:
         g, dps = self.ACCEL_LSB_PER_G, self.GYRO_LSB_PER_DPS
         return {"accel": [round(ax / g, 3), round(ay / g, 3), round(az / g, 3)],
                 "gyro": [round(gx / dps, 2), round(gy / dps, 2), round(gz / dps, 2)],
-                "temp": round(temp / 340.0 + 36.53, 1)}
+                "temp": round(self.temperature_c(temp), 1)}
+
+    def temperature_c(self, raw: int) -> float:
+        """The two chip families scale their temperature sensor differently (datasheets)."""
+        if getattr(self, "chip_id", 0x68) in self.MPU6500_FAMILY:
+            return raw / 333.87 + 21.0
+        return raw / 340.0 + 36.53
 
     def close(self) -> None:
         self._i2c.close()

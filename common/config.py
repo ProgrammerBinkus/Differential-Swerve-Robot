@@ -155,9 +155,10 @@ _DEFAULT_CONFIG: dict[str, Any] = {
         "BR": {"motor_a": "M6", "motor_b": "M7", "encoder": "E4",
                "invert_a": False, "invert_b": False, "invert_encoder": False, "offset": 0},
     },
-    # MPU-6050 (GY-521) on I2C0 with encoder E1 (wiring sheet E-01). Turn the robot counter-clockwise
-    # by hand: the heading should go up. If it goes down, the board is upside down: set invert_yaw.
-    "imu": {"bus": "/dev/i2c-0", "address": 0x68, "invert_yaw": False, "sda_pin": 3, "scl_pin": 5},
+    # MPU-6050 (GY-521; this robot's is an MPU-6500) on I2C2 with encoder E3: spliced onto E3's run to
+    # header pins 19/23. Turn the robot counter-clockwise by hand: the heading should go up. If it goes
+    # down, the board is upside down: set invert_yaw.
+    "imu": {"bus": "/dev/i2c-2", "address": 0x68, "invert_yaw": False, "sda_pin": 19, "scl_pin": 23},
     "tuning": {field.key: field.default for field in TUNING_FIELDS},
     # Distance from the robot's center to each wheel's center along x and along y (110 mm, from the CAD).
     # It sets how fast the wheels must run for a given turn rate.

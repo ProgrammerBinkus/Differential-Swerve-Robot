@@ -19,6 +19,8 @@ folder: open them in a browser.
 | `pi_setup/perms.sh` | Pi, once | Lets `orangepi` use I2C and GPIO without sudo |
 | `pi_setup/finish.sh` | Pi, once | PWM permissions, the `orangepi4pro.local` name, the `swerve-robot` service |
 | `pi_setup/hdmi-fix/` | | HDMI fix installed by `setup.sh` (from CheezeCS/armbian-a733-gpu, MIT) |
+| `pi_setup/overlays/i2c-100khz.dts` | | Runs the encoder I2C buses at 100 kHz (installed by `setup.sh`; `i2c_speed.sh` adds it to an older setup) |
+| `pi_setup/sudoers.sh` | Pi, once | The password-free rules: the robot service's start/stop/restart, and power off |
 | `pi_setup/sync.ps1` | this PC | Copies the code to the Pi, updates its H-bridge pins, restarts the robot |
 | `pi_setup/find_pi.ps1` | this PC | Finds the Pi on the Wi-Fi when `orangepi4pro.local` doesn't answer |
 | `tools/link_check.py` | this PC | Checks the PC ↔ robot link the way the driver station uses it |
@@ -86,6 +88,26 @@ boots to a text console. On a freshly flashed card the fix isn't there yet, so u
   reverse-polarity protection. Use keyed connectors (XT60), an inline fuse, and ideally an ideal-diode or
   P-MOSFET reverse-polarity stage. After any reversal, measure the regulator's output with nothing
   connected before plugging the Pi back in.
+
+## When the encoders or IMU don't answer
+
+`venv/bin/python -m tools.probe_hardware` says which ones. In order of how often each has bitten:
+
+1. **The encoder's IIC jumper isn't bridged.** These MT6701 boards ship in ABZ mode: their SDA/SCL pads
+   are then A/B pulse outputs that the chip drives, so nothing on that bus answers, and an IMU sharing
+   the bus is jammed too. Bridge the two pads by the "IIC" arrow, then check VCC to GND doesn't beep.
+2. **The bus speed.** The encoder boards have no pull-up resistors, so the buses rely on the Pi's weak
+   internal ones and must run at 100 kHz (`cat /sys/bus/i2c/devices/i2c-2/device/of_node/clock-frequency
+   | od -An -tu4 --endian=big` should say 100000). Runs longer than ~30 cm may need real 4.7 kΩ pull-ups
+   from SDA and SCL to 3.3 V.
+3. **The robot looks on the wrong bus.** The IMU is wired onto E3's run (I2C2, pins 19/23); the
+   Mapping tab's IMU bus must say `/dev/i2c-2`.
+4. **Wiring:** 3.3 V at the board (measured from a Pi ground pin), SDA/SCL continuity to the right header
+   pins, and SDA not touching SCL.
+
+**Power-cut losses:** cutting the battery while the Pi runs can lose any file written in the last few
+minutes (this image writes to the card in batches). The robot's own config is always forced to the card
+when saved, but use **Power off Pi** before switching off anyway.
 
 ## When the Pi won't boot
 

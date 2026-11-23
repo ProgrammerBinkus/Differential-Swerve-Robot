@@ -26,6 +26,12 @@ if grep -q '^overlays=' "$ENV"; then sed -i "s/^overlays=.*/$LINE/" "$ENV"; else
 for o in i2c0 i2c1 i2c2 i2c3 pwm0 pwm2 pwm3 pwm4 pwm5 pwm6 pwm7 spwm2; do
   test -f "/boot/dtb/allwinner/overlay/sun60i-a733-$o.dtbo" || { echo "missing overlay $o"; exit 1; }
 done
+# The encoder boards have no I2C pull-ups, so the buses lean on the Pi's weak internal ones: run them
+# at 100 kHz (overlays/i2c-100khz.dts) rather than the image's 400 kHz.
+mkdir -p /boot/overlay-user
+install -m 644 overlays/i2c-100khz.dtbo /boot/overlay-user/i2c-100khz.dtbo
+grep -q '^user_overlays=' "$ENV" || echo "user_overlays=" >> "$ENV"
+grep -q '^user_overlays=.*\bi2c-100khz\b' "$ENV" || sed -i 's/^user_overlays=\(.*\)$/user_overlays=\1 i2c-100khz/' "$ENV"
 cat "$ENV"
 
 echo "== 4/4 Robot Python environment"

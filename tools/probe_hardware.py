@@ -82,7 +82,8 @@ def probe_i2c(config: dict) -> None:
             high, low = msgs[1].data
             print(f"{OK}{encoder_id} on {bus}: MT6701 at 0x06, raw angle {(high << 6) | (low >> 2)}")
         except I2CError as exc:
-            print(f"{BAD}{encoder_id} on {bus}: no answer at 0x06 ({exc}). Check wiring and pull-ups.")
+            print(f"{BAD}{encoder_id} on {bus}: no answer at 0x06 ({exc}). Check its wiring, and that the board's "
+                  "IIC solder jumper is bridged: these boards ship in ABZ mode, where SDA/SCL are pulse outputs.")
         i2c.close()
 
     imu = config["imu"]

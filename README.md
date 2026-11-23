@@ -15,6 +15,13 @@ A few things about the hardware that matter for the code:
 - **Encoders:** one MT6701 per module, geared 2:1 off the steering (90t on the wheel, 45t on the
   encoder). That means it can't tell 0° from 180° at start-up, so every wheel has to be within ±90° of
   zero when the robot turns on (more on that under [Driving](#driving)).
+  - **Bridge the "IIC" solder jumper on every encoder board.** These boards ship in ABZ mode, where
+    the SDA/SCL pads are actually A/B pulse outputs, so nothing answers on I2C until it's bridged.
+    That one cost me a whole evening.
+  - They have no I2C pull-up resistors, but the Pi's built-in ones are enough for my short runs
+    (under 30 cm) at 100 kHz, so `setup.sh` runs the buses at 100 kHz instead of 400.
+- **IMU:** an MPU-6050 board (mine actually has the compatible MPU-6500 on it), spliced onto encoder
+  E3's wires, so it shares I2C2 (header pins 19/23) with E3.
 - **No drive encoders**, so steering is closed-loop (PID on the encoder angle) and driving is open-loop.
 - **Motor controllers:** four AT8236 dual H-bridges. The important thing to remember is that each
   H-bridge runs two motors on neighboring sides of *different* modules, not both motors of one module.

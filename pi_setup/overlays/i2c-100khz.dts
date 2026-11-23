@@ -1,0 +1,25 @@
+// Run the four encoder I2C buses (TWI0-3, header pins 3/5, 27/28, 19/23, 26/21) at 100 kHz instead of
+// 400 kHz. The robot's encoder and IMU runs are long and spliced, and at 400 kHz their capacitance slows
+// the signal edges too much for the chips to read. 100 kHz still reads an encoder in well under 1 ms.
+// Installed by pi_setup/i2c_speed.sh as a user overlay (user_overlays= in /boot/orangepiEnv.txt).
+/dts-v1/;
+/plugin/;
+
+/ {
+	fragment@0 {
+		target-path = "/soc@3000000/twi@2510000";
+		__overlay__ { clock-frequency = <100000>; };
+	};
+	fragment@1 {
+		target-path = "/soc@3000000/twi@2511000";
+		__overlay__ { clock-frequency = <100000>; };
+	};
+	fragment@2 {
+		target-path = "/soc@3000000/twi@2512000";
+		__overlay__ { clock-frequency = <100000>; };
+	};
+	fragment@3 {
+		target-path = "/soc@3000000/twi@2513000";
+		__overlay__ { clock-frequency = <100000>; };
+	};
+};
