@@ -116,8 +116,9 @@ _DEFAULT_CONFIG: dict[str, Any] = {
     "hbridges": {
         "HB1": {"A": _hbridge_channel(0, 0, 29, "PWM0-0", "PD1", 31),       # paired
                 "B": _hbridge_channel(0, 2, 33, "PWM0-2", "PD23", 22)},
-        "HB2": {"A": _hbridge_channel(0, 3, 35, "PWM0-3", "PE12", 24),
-                "B": _hbridge_channel(0, 4, 37, "PWM0-4", "PK24", 15)},
+        # HB2's direction wires are swapped from the original plan (one wire was too short to reach).
+        "HB2": {"A": _hbridge_channel(0, 3, 35, "PWM0-3", "PK24", 15),
+                "B": _hbridge_channel(0, 4, 37, "PWM0-4", "PE12", 24)},
         "HB3": {"A": _hbridge_channel(0, 5, 32, "PWM0-5", "PK25", 18),
                 "B": _hbridge_channel(0, 6, 36, "PWM0-6", "PL5", 16)},
         "HB4": {"A": _hbridge_channel(0, 7, 38, "PWM0-7", "PL13", 40),      # paired
