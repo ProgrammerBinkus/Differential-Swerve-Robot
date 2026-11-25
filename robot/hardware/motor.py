@@ -11,6 +11,7 @@ from robot.hardware.gpio import open_output
 
 log = logging.getLogger(__name__)
 
+DEADZONE = 0.02          # commands smaller than this are zero: a power band's start would otherwise jump them up
 PERMISSION_WAIT_S = 2.0  # how long a new PWM channel may take to become writable
 
 
@@ -19,7 +20,8 @@ class MotorOutput(Protocol):
     output: float  # last command, -1 to 1
     braking: bool
 
-    def configure(self, reverse_scale: float, ramp_per_s: float | None) -> None: ...
+    def configure(self, forward_band: tuple[float, float], reverse_band: tuple[float, float],
+                  ramp_per_s: float | None) -> None: ...
     def set(self, command: float) -> None: ...
     def stop(self) -> None: ...   # coast
     def brake(self) -> None: ...  # short the motor leads
@@ -54,7 +56,11 @@ class HBridgeChannel:
     retries every few ms: the motor hums and never starts. So, when
     :meth:`configure` turns them on:
 
-    * ``reverse_scale`` scales reverse commands down to match forward, and
+    * a *power band* per direction maps a command's size (0 to 1) onto the
+      duty range where that direction really works: from ``start`` (the duty
+      where the motor first moves, so small commands are not lost in a dead
+      zone) to ``max`` (just below where the H-bridge cuts out). Commands
+      under 2% are treated as zero. The default band is the whole 0-1 range.
     * ``ramp_per_s`` lets the applied power *rise* only this fast (full scale
       per second), so the motor spins up before it can ask for a stall-sized
       surge. Lowering the power, braking and stopping are always immediate.
@@ -68,14 +74,26 @@ class HBridgeChannel:
         self._reverse = False
         self._duty = 0.0
         self.braking = False
-        self.reverse_scale = 1.0
+        self.forward_band = (0.0, 1.0)  # (start, max) duty for forward commands
+        self.reverse_band = (0.0, 1.0)
         self.ramp_per_s = None        # None: no ramp, power changes at once
         self._applied = 0.0           # the command actually on the pins, after scaling and ramping
         self._last_set = None
 
-    def configure(self, reverse_scale: float, ramp_per_s: float | None) -> None:
-        self.reverse_scale = reverse_scale
+    def configure(self, forward_band: tuple[float, float], reverse_band: tuple[float, float],
+                  ramp_per_s: float | None) -> None:
+        self.forward_band = forward_band
+        self.reverse_band = reverse_band
         self.ramp_per_s = ramp_per_s
+
+    def _map(self, command: float) -> float:
+        """A command (-1 to 1) to the signed power actually sent, through the direction's band."""
+        size = abs(command)
+        if size < DEADZONE:
+            return 0.0
+        start, top = self.forward_band if command > 0.0 else self.reverse_band
+        power = start + size * (top - start)
+        return power if command > 0.0 else -power
 
     @classmethod
     def open(cls, name: str, spec: dict[str, Any], frequency_hz: float) -> "HBridgeChannel":
@@ -128,7 +146,7 @@ class HBridgeChannel:
 
     def set(self, command: float) -> None:
         command = _clamp_unit(command)
-        target = command * self.reverse_scale if command < 0.0 else command
+        target = self._map(command)
         now = time.monotonic()
         dt = 0.0 if self._last_set is None else min(now - self._last_set, 0.05)
         self._last_set = now
@@ -193,7 +211,8 @@ class SimMotorOutput:
         self.output = 0.0
         self.braking = False
 
-    def configure(self, reverse_scale: float, ramp_per_s: float | None) -> None:
+    def configure(self, forward_band: tuple[float, float], reverse_band: tuple[float, float],
+                  ramp_per_s: float | None) -> None:
         pass  # the simulated motors are ideal: equally strong both ways, no overcurrent trip
 
     def set(self, command: float) -> None:

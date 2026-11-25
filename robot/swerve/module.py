@@ -41,10 +41,11 @@ class DiffSwerveModule:
     """
 
     MAX_CONSECUTIVE_READ_ERRORS = 10  # 50 ms at 200 Hz
-    # The most the encoder can really move in one loop: 1/16 of a turn is 11 degrees of
-    # steering in 5 ms (over 6 module turns a second, twice the simulator's full-power
-    # rate). A reading further than this from the last good one is I2C noise, not motion.
-    MAX_STEP_PER_READ = ENCODER_COUNTS // 16
+    # The most the encoder can really move in one loop: 1/8 of a turn is 22.5 degrees of
+    # steering in 5 ms (12 module turns a second; the real modules were measured at 6.5).
+    # A reading further than this from the last good one is I2C noise, not motion. It must
+    # stay well under half a turn, where the shortest-step unwrapping would miscount.
+    MAX_STEP_PER_READ = ENCODER_COUNTS // 8
 
     def __init__(self, name: str, motor_a: MotorOutput, motor_b: MotorOutput, encoder: AngleSensor,
                  module_config: dict[str, Any], tuning: dict[str, float], period_s: float) -> None:

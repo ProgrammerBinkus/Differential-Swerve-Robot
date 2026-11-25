@@ -233,7 +233,7 @@ def test_a_wheel_that_really_jumped_is_followed_again():
     drivetrain = Drivetrain.from_config(hardware, config)
     drivetrain.read_sensors()
     encoder, fl = hardware.encoders["E2"], drivetrain.modules[0]
-    encoder.raw = (encoder.raw + 5000) % 16384   # 55 degrees of steering
+    encoder.raw = (encoder.raw + 7000) % 16384   # 77 degrees of steering
     for _ in range(8):
         drivetrain.read_sensors()
     assert 0 < fl.rejected_reads < 8
@@ -249,7 +249,7 @@ def test_failed_reads_widen_the_allowance(rig):
     for _ in range(3):
         drivetrain.read_sensors()
     encoder.fail = False
-    encoder.raw = (encoder.raw + 3 * 1024) % 16384   # 3 reads' worth of fast steering
+    encoder.raw = (encoder.raw + 3 * 2048) % 16384   # 3 reads' worth of fast steering
     drivetrain.read_sensors()
     assert fl.rejected_reads == 0
     assert fl.raw == encoder.raw

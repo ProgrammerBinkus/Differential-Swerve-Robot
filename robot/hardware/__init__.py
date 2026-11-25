@@ -66,10 +66,12 @@ class Hardware:
                 log.info("%s moved to %s", encoder_id, bus)
 
     def apply_tuning(self, tuning: dict[str, Any]) -> None:
-        """Hand the motor-shaping settings (reverse balance, soft-start ramp) to every channel."""
+        """Hand the motor-shaping settings (power bands, soft-start ramp) to every channel."""
         ramp = tuning["motor_ramp"]
+        forward = (tuning["forward_start"], tuning["forward_max"])
+        reverse = (tuning["reverse_start"], tuning["reverse_max"])
         for output in self.outputs.values():
-            output.configure(tuning["reverse_scale"], ramp if ramp > 0 else None)
+            output.configure(forward, reverse, ramp if ramp > 0 else None)
 
     def step(self, dt: float) -> None:
         """Advance the simulator, if there is one."""

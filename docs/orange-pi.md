@@ -109,9 +109,32 @@ boots to a text console. On a freshly flashed card the fix isn't there yet, so u
    motor code ramps power up ("Motor soft start" in Tuning) so the motor spins up first.
 4. **The two directions aren't equally strong.** Forward (direction pin low) lets the current die between
    PWM pulses, reverse keeps it flowing, so reverse pushes much harder at the same duty and forward does
-   little below ~60%. "Reverse balance" in Tuning scales reverse down; forward still needs its own fix.
+   little below ~60%. The Tuning tab's power bands map each direction onto the duty range where it
+   works; on the AT8236 boards that's about 60-78% forward and 15-40% reverse (from a slow ramp test),
+   and above that the board's ~2 A current limit stalls the motor. Boards with more current headroom
+   go back to 0-100%.
 5. **Stiff mechanics.** One motor turning a module with its partner braked has to overcome all of the
    module's friction: a module that's stiff by hand won't move in the motor check.
+
+### Where the motors stood on 2026-11-25
+
+The AT8236 boards are too small for these motors (their ~2 A limit against an ~8 A stall), so they're
+being replaced by ZK-BM1 dual 10 A boards. Those use the same PWM-on-IN1, direction-on-IN2 wiring and
+pull their inputs low when undriven (safe while the Pi boots); they need PWM at 2 kHz or less
+(`pwm_frequency_hz`), the power bands back at 0-1, and a software stall cut-off, since they don't list
+any current protection.
+
+Until then the Pi's `robot_config.json` holds what the bench tests found (a backup in case the card dies):
+
+- **Motors:** HB1-HB3 have A and B swapped against the wiring sheet: M1 HB1.B, M2 HB1.A, M3 HB2.B,
+  M4 HB2.A, M5 HB3.B, M6 HB3.A, M7 HB4.A, M8 HB4.B.
+- **Modules:** FL M3 + M2, FR M5 + M4 (both swapped so steering is counter-clockwise positive), BL
+  M1 + M8, BR M6 + M7; every encoder inverted; no motor inverts yet. Zero offsets FL 11431, FR 14589,
+  BL 7757, BR 6290.
+- **Tuning:** forward power 0.60-0.78, reverse 0.15-0.40, motor soft start 5/s.
+
+Still open: which way each wheel rolls on pure drive (sets the invert flags, with the wheels zeroed
+first), the seized BR module, and M8 (HB4 B), which barely moves forward.
 
 ## When the encoders or IMU don't answer
 

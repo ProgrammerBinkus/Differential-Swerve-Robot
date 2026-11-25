@@ -82,8 +82,14 @@ TUNING_FIELDS = (
                 "Full turn stick spins the robot this fast, or as fast as the wheels allow if that is less."),
     TuningField("accel_limit", "Acceleration limit", 0.5, 20.0, 4.0, "/s", 0.1,
                 "How fast commands may change, in full-scale per second."),
-    TuningField("reverse_scale", "Reverse balance", 0.1, 1.0, 0.5, "", 0.01,
-                "The H-bridges push harder in reverse than forward at the same power; reverse is scaled by this."),
+    TuningField("forward_start", "Forward power start", 0.0, 0.95, 0.0, "", 0.01,
+                "Duty where a motor first moves forward. The smallest command starts here, skipping the dead zone."),
+    TuningField("forward_max", "Forward power max", 0.05, 1.0, 1.0, "", 0.01,
+                "Duty at full command forward. Set it below where the H-bridge cuts out (the motor hums)."),
+    TuningField("reverse_start", "Reverse power start", 0.0, 0.95, 0.0, "", 0.01,
+                "Duty where a motor first moves in reverse."),
+    TuningField("reverse_max", "Reverse power max", 0.05, 1.0, 1.0, "", 0.01,
+                "Duty at full command in reverse. The AT8236 pushes harder in reverse, so this is usually lower."),
     TuningField("motor_ramp", "Motor soft start", 0.0, 50.0, 5.0, "/s", 0.5,
                 "How fast a motor's power may rise (full scale per second), so it spins up instead of tripping "
                 "the H-bridge's 4.2 A cut-out. 0 turns it off."),
@@ -392,6 +398,10 @@ def validate_config(config: dict[str, Any]) -> list[str]:
     else:
         for field in TUNING_FIELDS:
             _check_range(errors, field.label, tuning.get(field.key), field.minimum, field.maximum)
+        for direction in ("forward", "reverse"):
+            start, top = tuning.get(f"{direction}_start"), tuning.get(f"{direction}_max")
+            if isinstance(start, (int, float)) and isinstance(top, (int, float)) and start >= top:
+                errors.append(f"{direction.capitalize()} power start must be below {direction} power max")
 
     geometry = config.get("geometry")
     _check_range(errors, "geometry.module_offset_m",

@@ -40,14 +40,25 @@ def test_brake_drives_both_inputs_high_and_driving_resumes_after():
     assert (pin.value, pwm.duty_cycle) == (False, 0.0)       # both low: coast
 
 
-def test_reverse_is_scaled_down_when_configured():
+def test_each_direction_maps_onto_its_power_band():
     motor, pwm, pin = channel()
-    motor.configure(reverse_scale=0.5, ramp_per_s=None)
-    motor.set(-0.6)
-    assert (pin.value, round(pwm.duty_cycle, 6)) == (True, 0.7)   # 30% reverse, not 60%
-    motor.set(0.6)
-    assert (pin.value, round(pwm.duty_cycle, 6)) == (False, 0.6)  # forward unchanged
-    assert motor.output == 0.6
+    motor.configure(forward_band=(0.6, 0.8), reverse_band=(0.15, 0.4), ramp_per_s=None)
+    motor.set(0.5)
+    assert (pin.value, round(pwm.duty_cycle, 6)) == (False, 0.7)   # halfway through 60-80%
+    motor.set(1.0)
+    assert round(pwm.duty_cycle, 6) == 0.8                          # never past the max
+    motor.set(-1.0)
+    assert (pin.value, round(pwm.duty_cycle, 6)) == (True, 0.6)    # 40% reverse
+    motor.set(-0.01)
+    assert (pin.value, pwm.duty_cycle) == (False, 0.0)              # inside the deadzone: off
+    assert motor.output == -0.01
+
+
+def test_invalid_power_band_is_rejected():
+    from common.config import default_config, validate_config
+    config = default_config()
+    config["tuning"].update(forward_start=0.8, forward_max=0.6)
+    assert any("Forward power start" in e for e in validate_config(config))
 
 
 def test_power_rises_at_the_ramp_rate_and_falls_at_once(monkeypatch):
@@ -55,7 +66,7 @@ def test_power_rises_at_the_ramp_rate_and_falls_at_once(monkeypatch):
     clock = [100.0]
     monkeypatch.setattr(motor_module.time, "monotonic", lambda: clock[0])
     motor, pwm, pin = channel()
-    motor.configure(reverse_scale=1.0, ramp_per_s=5.0)
+    motor.configure(forward_band=(0.0, 1.0), reverse_band=(0.0, 1.0), ramp_per_s=5.0)
     motor.set(0.8)                       # first call: no time has passed, nothing applied yet
     assert pwm.duty_cycle == 0.0
     for _ in range(4):                   # 4 loops of 10 ms at 5/s: +0.05 each
@@ -78,7 +89,7 @@ def test_a_long_gap_does_not_let_the_power_jump(monkeypatch):
     clock = [0.0]
     monkeypatch.setattr(motor_module.time, "monotonic", lambda: clock[0])
     motor, pwm, _ = channel()
-    motor.configure(reverse_scale=1.0, ramp_per_s=5.0)
+    motor.configure(forward_band=(0.0, 1.0), reverse_band=(0.0, 1.0), ramp_per_s=5.0)
     motor.set(0.0)
     clock[0] += 10.0
     motor.set(1.0)
@@ -90,7 +101,7 @@ def test_brake_resets_the_ramp(monkeypatch):
     clock = [0.0]
     monkeypatch.setattr(motor_module.time, "monotonic", lambda: clock[0])
     motor, pwm, pin = channel()
-    motor.configure(reverse_scale=1.0, ramp_per_s=5.0)
+    motor.configure(forward_band=(0.0, 1.0), reverse_band=(0.0, 1.0), ramp_per_s=5.0)
     motor.set(0.5)
     for _ in range(20):
         clock[0] += 0.01
