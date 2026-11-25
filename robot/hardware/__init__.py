@@ -65,6 +65,12 @@ class Hardware:
                 self.encoders[encoder_id] = replacement
                 log.info("%s moved to %s", encoder_id, bus)
 
+    def apply_tuning(self, tuning: dict[str, Any]) -> None:
+        """Hand the motor-shaping settings (reverse balance, soft-start ramp) to every channel."""
+        ramp = tuning["motor_ramp"]
+        for output in self.outputs.values():
+            output.configure(tuning["reverse_scale"], ramp if ramp > 0 else None)
+
     def step(self, dt: float) -> None:
         """Advance the simulator, if there is one."""
         if self._plant is not None:

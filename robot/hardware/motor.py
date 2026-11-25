@@ -19,6 +19,7 @@ class MotorOutput(Protocol):
     output: float  # last command, -1 to 1
     braking: bool
 
+    def configure(self, reverse_scale: float, ramp_per_s: float | None) -> None: ...
     def set(self, command: float) -> None: ...
     def stop(self) -> None: ...   # coast
     def brake(self) -> None: ...  # short the motor leads
@@ -44,6 +45,19 @@ class HBridgeChannel:
     Reverse (DIR high): PWM alternates brake and reverse. The motor is driven
     while PWM is *low*, so the duty is inverted: duty = 1 + command
     (command -0.3 gives duty 0.7, which is 30% reverse).
+
+    The two directions are not equally strong. Between pulses, forward lets
+    the motor current die away (coast), while reverse keeps it flowing
+    (brake), so the same duty pushes much harder in reverse. And a motor
+    at rest draws its full stall current for the first few milliseconds,
+    more than the AT8236's 4.2 A overcurrent trip, which then cuts out and
+    retries every few ms: the motor hums and never starts. So, when
+    :meth:`configure` turns them on:
+
+    * ``reverse_scale`` scales reverse commands down to match forward, and
+    * ``ramp_per_s`` lets the applied power *rise* only this fast (full scale
+      per second), so the motor spins up before it can ask for a stall-sized
+      surge. Lowering the power, braking and stopping are always immediate.
     """
 
     def __init__(self, name: str, pwm, direction) -> None:
@@ -54,6 +68,14 @@ class HBridgeChannel:
         self._reverse = False
         self._duty = 0.0
         self.braking = False
+        self.reverse_scale = 1.0
+        self.ramp_per_s = None        # None: no ramp, power changes at once
+        self._applied = 0.0           # the command actually on the pins, after scaling and ramping
+        self._last_set = None
+
+    def configure(self, reverse_scale: float, ramp_per_s: float | None) -> None:
+        self.reverse_scale = reverse_scale
+        self.ramp_per_s = ramp_per_s
 
     @classmethod
     def open(cls, name: str, spec: dict[str, Any], frequency_hz: float) -> "HBridgeChannel":
@@ -77,6 +99,14 @@ class HBridgeChannel:
                     if pwm.period_ns > 0:
                         pwm.duty_cycle_ns = 0  # the kernel rejects a period shorter than the current duty
                     pwm.frequency = frequency_hz
+                    if pwm.polarity != "normal":
+                        # The Orange Pi 4 Pro's kernel exports channels "inversed": duty 0 would hold
+                        # IN1 high (full speed) and brake would drive full reverse. Its driver only
+                        # takes a polarity once a period is set and while the channel is off, and it
+                        # rejects disabling a channel that is already off.
+                        if pwm.enabled:
+                            pwm.disable()
+                        pwm.polarity = "normal"
                     pwm.duty_cycle = 0.0
                     pwm.enable()
                     break
@@ -87,7 +117,10 @@ class HBridgeChannel:
             direction = open_output(spec["dir"])
         except Exception:
             try:
-                pwm.disable()
+                if pwm.enabled:   # the Pi's driver rejects disabling an idle channel
+                    pwm.disable()
+            except Exception:
+                pass              # keep the original error, which says what went wrong
             finally:
                 pwm.close()
             raise
@@ -95,6 +128,24 @@ class HBridgeChannel:
 
     def set(self, command: float) -> None:
         command = _clamp_unit(command)
+        target = command * self.reverse_scale if command < 0.0 else command
+        now = time.monotonic()
+        dt = 0.0 if self._last_set is None else min(now - self._last_set, 0.05)
+        self._last_set = now
+        applied = self._applied
+        if target * applied < 0.0:
+            applied = 0.0                      # changing direction: from zero, never straight across
+        if self.ramp_per_s is None or abs(target) <= abs(applied):
+            applied = target                   # less power (or no ramp): at once
+        else:
+            step = min(self.ramp_per_s * dt, abs(target) - abs(applied))
+            applied += step if target > 0.0 else -step
+        self._applied = applied
+        self._write(applied)
+        self.output = command
+        self.braking = False
+
+    def _write(self, command: float) -> None:
         reverse = command < 0.0
         duty = 1.0 + command if reverse else command
         if reverse != self._reverse:
@@ -104,8 +155,6 @@ class HBridgeChannel:
         if abs(duty - self._duty) > 1e-4:
             self._pwm.duty_cycle = duty
             self._duty = duty
-        self.output = command
-        self.braking = False
 
     def stop(self) -> None:
         """Coast (both inputs low): the motor spins freely."""
@@ -125,6 +174,7 @@ class HBridgeChannel:
             self._duty = 1.0
         self.output = 0.0
         self.braking = True
+        self._applied = 0.0
 
     def close(self) -> None:
         """Stop, then release both pins. Never raises: it runs during shutdown."""
@@ -142,6 +192,9 @@ class SimMotorOutput:
         self.name = name
         self.output = 0.0
         self.braking = False
+
+    def configure(self, reverse_scale: float, ramp_per_s: float | None) -> None:
+        pass  # the simulated motors are ideal: equally strong both ways, no overcurrent trip
 
     def set(self, command: float) -> None:
         self.output = _clamp_unit(command)

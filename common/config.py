@@ -82,6 +82,11 @@ TUNING_FIELDS = (
                 "Full turn stick spins the robot this fast, or as fast as the wheels allow if that is less."),
     TuningField("accel_limit", "Acceleration limit", 0.5, 20.0, 4.0, "/s", 0.1,
                 "How fast commands may change, in full-scale per second."),
+    TuningField("reverse_scale", "Reverse balance", 0.1, 1.0, 0.5, "", 0.01,
+                "The H-bridges push harder in reverse than forward at the same power; reverse is scaled by this."),
+    TuningField("motor_ramp", "Motor soft start", 0.0, 50.0, 5.0, "/s", 0.5,
+                "How fast a motor's power may rise (full scale per second), so it spins up instead of tripping "
+                "the H-bridge's 4.2 A cut-out. 0 turns it off."),
     TuningField("hold_threshold", "Hold-angle threshold", 0.0, 0.2, 0.02, "", 0.005,
                 "Below this speed fraction a wheel keeps its last angle instead of snapping to 0."),
     TuningField("home_tolerance_deg", "Return-to-zero tolerance", 0.5, 20.0, 3.0, "°", 0.1,
@@ -116,8 +121,9 @@ _DEFAULT_CONFIG: dict[str, Any] = {
     "hbridges": {
         "HB1": {"A": _hbridge_channel(0, 0, 29, "PWM0-0", "PD1", 31),       # paired
                 "B": _hbridge_channel(0, 2, 33, "PWM0-2", "PD23", 22)},
-        # HB2's direction wires are swapped from the original plan (one wire was too short to reach).
-        "HB2": {"A": _hbridge_channel(0, 3, 35, "PWM0-3", "PK24", 15),
+        # HB2's direction wires are swapped from the original plan (one wire was too short to reach),
+        # and channel A's moved again from header pin 15 (PK24), whose output stopped working, to pin 13.
+        "HB2": {"A": _hbridge_channel(0, 3, 35, "PWM0-3", "PL12", 13),
                 "B": _hbridge_channel(0, 4, 37, "PWM0-4", "PE12", 24)},
         "HB3": {"A": _hbridge_channel(0, 5, 32, "PWM0-5", "PK25", 18),
                 "B": _hbridge_channel(0, 6, 36, "PWM0-6", "PL5", 16)},

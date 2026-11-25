@@ -53,14 +53,17 @@ def board(monkeypatch):
         def __init__(self, chip, channel):
             self.key = (chip, channel)
             self.period_ns = 0
+            object.__setattr__(self, "polarity", "inversed")   # how the Orange Pi 4 Pro's kernel exports a channel
             self.enabled = False
             self.closed = False
             state.pwms[self.key] = self
             state.log.append((self.key, "open", None))
 
         def __setattr__(self, name, value):
+            if name == "polarity" and (getattr(self, "enabled", False) or "frequency" not in self.__dict__):
+                raise IOError("Invalid argument: polarity needs a period and a disabled channel")
             object.__setattr__(self, name, value)
-            if name in ("frequency", "duty_cycle", "duty_cycle_ns"):
+            if name in ("frequency", "duty_cycle", "duty_cycle_ns", "polarity"):
                 state.log.append((self.key, name, value))
 
         def enable(self):
@@ -68,6 +71,8 @@ def board(monkeypatch):
             state.log.append((self.key, "enable", None))
 
         def disable(self):
+            if not self.enabled:
+                raise IOError("Invalid argument: the Orange Pi's driver rejects disabling an idle channel")
             self.enabled = False
 
         def close(self):
@@ -129,6 +134,15 @@ def test_channel_opens_at_20_khz_with_the_motor_coasting(board):
     actions = [action for device, action, _ in board.log if device == (0, 0)]
     assert actions.index("duty_cycle") < actions.index("enable")   # never enabled with a stale duty
     assert board.gpios["PD1"].direction == "low"                    # IN2 low + IN1 0% = coast
+
+
+def test_channel_turns_off_the_kernels_inverted_polarity_before_enabling(board):
+    """Inverted, duty 0 would hold IN1 high (full speed) and brake would drive full reverse."""
+    HBridgeChannel.open("HB1.A", default_config()["hbridges"]["HB1"]["A"], 20000)
+    pwm = board.pwms[(0, 0)]
+    assert pwm.polarity == "normal"
+    actions = [action for device, action, _ in board.log if device == (0, 0)]
+    assert actions.index("polarity") < actions.index("enable")
 
 
 def test_channel_waits_for_udev_to_make_a_new_pwm_writable(board, monkeypatch):
@@ -254,7 +268,7 @@ def test_open_hardware_opens_every_pin_in_the_wiring_table(board):
     hardware = open_hardware(config, simulate=False)
     assert set(hardware.outputs) == {f"{hb}.{ch}" for hb in HBRIDGE_IDS for ch in HBRIDGE_CHANNELS}
     assert set(board.pwms) == {(0, 0), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6), (0, 7), (20, 2)}  # S-PWM is pwmchip20
-    assert set(board.gpios) == {"PD1", "PD23", "PE12", "PK24", "PK25", "PL5", "PL13", "PL6"}
+    assert set(board.gpios) == {"PD1", "PD23", "PE12", "PL12", "PK25", "PL5", "PL13", "PL6"}
     assert all(pwm.enabled and pwm.duty_cycle == 0.0 for pwm in board.pwms.values())
     assert not any(gpio.value for gpio in board.gpios.values())     # every motor coasting
     assert board.i2c_buses == [f"/dev/i2c-{n}" for n in range(4)] + ["/dev/i2c-2"]  # 4 encoders, then the IMU

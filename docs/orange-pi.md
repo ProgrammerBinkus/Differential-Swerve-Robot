@@ -88,6 +88,30 @@ boots to a text console. On a freshly flashed card the fix isn't there yet, so u
   reverse-polarity protection. Use keyed connectors (XT60), an inline fuse, and ideally an ideal-diode or
   P-MOSFET reverse-polarity stage. After any reversal, measure the regulator's output with nothing
   connected before plugging the Pi back in.
+- **The Pi's ground must be tied to the battery ground**, even when the Pi runs from USB-C. Without it
+  the H-bridges can't read the Pi's signals at all: motors twitch and hum but never respond. If the
+  header connector on pins 2/4/6 is unplugged for USB power, keep pin 6 (ground) connected on its own.
+- **Boot the Pi before switching the battery on, and switch it off before unplugging the Pi.** Until the
+  robot program starts (15-20 s after power-up), nothing drives the H-bridge inputs. The boards' own
+  1.1 kΩ pull-ups then hold every direction input high, which is full reverse: the wheels spin hard.
+- **Fit the Wi-Fi antenna.** Without it the signal is so weak that motor noise knocks the Pi off the
+  network whenever the battery is on, and it doesn't come back until the Pi is replugged.
+
+## When the motors don't move
+
+1. **No shared ground** (above): every motor hums or twitches and none follows a command.
+2. **A loose header connector.** Measure each board input with the robot idle (battery off, probe on
+   ground): all of them should read 0 V. One reading about 2.9 V is floating up through the board's
+   pull-up: its connector isn't gripping the pin, or the Pi pin is dead. Header pin 15 (PK24) stopped
+   driving on this Pi, so HB2 A's direction moved to pin 13.
+3. **The H-bridge cuts out.** These motors are about 1.5 Ω, so a stalled or just-starting motor asks for
+   ~8 A, past the AT8236's 4.2 A trip; it shuts off and retries every few ms (a hum, no movement). The
+   motor code ramps power up ("Motor soft start" in Tuning) so the motor spins up first.
+4. **The two directions aren't equally strong.** Forward (direction pin low) lets the current die between
+   PWM pulses, reverse keeps it flowing, so reverse pushes much harder at the same duty and forward does
+   little below ~60%. "Reverse balance" in Tuning scales reverse down; forward still needs its own fix.
+5. **Stiff mechanics.** One motor turning a module with its partner braked has to overcome all of the
+   module's friction: a module that's stiff by hand won't move in the motor check.
 
 ## When the encoders or IMU don't answer
 

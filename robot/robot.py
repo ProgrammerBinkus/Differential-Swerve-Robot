@@ -69,6 +69,7 @@ class Robot:
         self._store = ConfigStore(config_path)
         self.config = self._store.load()
         self._hardware = open_hardware(self.config, simulate)
+        self._hardware.apply_tuning(self.config["tuning"])
         self._receiver: CommandReceiver | None = None
         try:
             self._drivetrain = Drivetrain.from_config(self._hardware, self.config)
@@ -363,6 +364,7 @@ class Robot:
         for limiter in self._limiters:
             limiter.rate_per_s = merged["tuning"]["accel_limit"]
 
+        self._hardware.apply_tuning(merged["tuning"])
         self.config = merged
         self._save_config()
         self._control.broadcast(self._config_message())
