@@ -218,7 +218,7 @@ pre{margin:0;background:var(--sheet);border:1px solid var(--rule);padding:12px 1
   </div>
   <div class="tblock" aria-label="Drawing information">
     <div>Sheet</div><div class="mono">E-02 · pin level</div>
-    <div>Rev</div><div class="mono">G · 2026-11-25</div>
+    <div>Rev</div><div class="mono">H · 2026-11-25</div>
     <div>Front</div><div>Side away from the Orange Pi</div>
     <div>Wheel centers</div><div class="mono">±110 mm in x and y</div>
     <div>Logic level</div><div class="mono">3.3 V on every signal</div>
@@ -730,7 +730,8 @@ function resyncChoosers(){ document.querySelectorAll(".chooser").forEach(h => h.
 /* ===== 40-pin header map ===== */
 const HK = {p33:["3.3 V",KC.p33],v5:["5 V",KC.v5],gnd:["Ground",KC.gnd],pwm:["PWM",KC.pwm],dir:["Direction",KC.dir],sda:["SDA",KC.sda],scl:["SCL",KC.scl],free:["Spare","var(--rule)"]};
 (function(){
-  const FIXED = {1:["3.3 V","p33","spare, same rail as 17"],10:["spare","free","UART7 RX · PL7"],11:["spare","free","PL9"],12:["spare","free","PL8"],13:["spare","free","PL12"]};
+  const FIXED = {1:["3.3 V","p33","spare, same rail as 17"],10:["spare","free","UART7 RX · PL7"],11:["spare","free","PL9"],12:["spare","free","PL8"],15:["don't use","free","PK24 · output dead on this Pi"]};
+  // Every pin needs an entry: a used pin comes from PINUSE, the rest from FIXED. A pin in neither stops the whole map.
   [14,20,25,30,34,39].forEach(p => FIXED[p] = ["GND","gnd","spare"]);
   const info = p => { const u = PINUSE[p];
     return u ? [u.target, u.kind, u.detail !== undefined ? u.detail : [u.label, u.sub].filter(Boolean).join(" · ")] : FIXED[p]; };

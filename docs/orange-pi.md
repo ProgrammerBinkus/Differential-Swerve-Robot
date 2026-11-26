@@ -128,13 +128,21 @@ Until then the Pi's `robot_config.json` holds what the bench tests found (a back
 
 - **Motors:** HB1-HB3 have A and B swapped against the wiring sheet: M1 HB1.B, M2 HB1.A, M3 HB2.B,
   M4 HB2.A, M5 HB3.B, M6 HB3.A, M7 HB4.A, M8 HB4.B.
-- **Modules:** FL M3 + M2, FR M5 + M4 (both swapped so steering is counter-clockwise positive), BL
-  M1 + M8, BR M6 + M7; every encoder inverted; no motor inverts yet. Zero offsets FL 11431, FR 14589,
-  BL 7757, BR 6290.
-- **Tuning:** forward power 0.60-0.78, reverse 0.15-0.40, motor soft start 5/s.
+- **Modules:** FL M3 + M2, FR M5 + M4, BR M7 + M6 (each swapped so steering is counter-clockwise
+  positive), BL M1 + M8; every encoder inverted; no motor inverts yet. Zero offsets FL 11431, FR 14589,
+  BL 7757, BR 6290, set before the pinion gears were replaced, so redo Swerve Set Zero.
+- **Tuning:** shared power bands forward 0.60-0.78, reverse 0.15-0.40, motor soft start 5/s.
+- **Per-motor bands** (`motor_bands`, from single-motor ramp tests before the new pinions): M1 forward
+  0.64-0.76 / reverse 0.21-0.36, M2 0.62-0.79 / 0.15-0.33, M3 0.61-0.73 / 0.24-0.39, M4 0.64-0.70 /
+  0.17-0.30, M7 reverse 0.20-0.60, M8 reverse 0.38-0.65.
+
+HB3 AIN1 (M6's speed) had been plugged onto header pin 30, a ground, instead of 32: with it moved,
+all four wheels steer. With the new pinion gears, single-motor tests (partner coasting) barely move
+any wheel, since one motor now has to turn its partner through tighter gears; measure per wheel, both
+motors together, instead.
 
 Still open: which way each wheel rolls on pure drive (sets the invert flags, with the wheels zeroed
-first), the seized BR module, and M8 (HB4 B), which barely moves forward.
+first), and M8 (HB4 B), which never moves forward, so the back-left drifts when driving.
 
 ## When the encoders or IMU don't answer
 

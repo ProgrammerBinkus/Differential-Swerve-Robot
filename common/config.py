@@ -173,6 +173,10 @@ _DEFAULT_CONFIG: dict[str, Any] = {
     # down, the board is upside down: set invert_yaw.
     "imu": {"bus": "/dev/i2c-2", "address": 0x68, "invert_yaw": False, "sda_pin": 19, "scl_pin": 23},
     "tuning": {field.key: field.default for field in TUNING_FIELDS},
+    # Per-motor power bands that override the Tuning tab's shared ones, measured on the stand when the
+    # H-bridges make each motor's working range different: {"M1": {"forward": [start, max],
+    # "reverse": [start, max]}}. Either direction may be left out. Edited in robot_config.json.
+    "motor_bands": {},
     # Distance from the robot's center to each wheel's center along x and along y (110 mm, from the CAD).
     # It sets how fast the wheels must run for a given turn rate.
     "geometry": {"module_offset_m": 0.11},
@@ -383,6 +387,35 @@ def _validate_imu(config: dict[str, Any], errors: list[str]) -> None:
         errors.append("imu.invert_yaw must be true or false")
 
 
+def _validate_motor_bands(config: dict[str, Any], errors: list[str]) -> None:
+    bands = config.get("motor_bands", {})
+    if not isinstance(bands, dict):
+        errors.append("motor_bands must be an object")
+        return
+    for motor_id, entry in bands.items():
+        if motor_id not in MOTOR_IDS:
+            errors.append(f"motor_bands: unknown motor {motor_id}")
+            continue
+        if not isinstance(entry, dict) or set(entry) - {"forward", "reverse"}:
+            errors.append(f"motor_bands.{motor_id} may only hold 'forward' and 'reverse'")
+            continue
+        for direction, band in entry.items():
+            ok = (isinstance(band, (list, tuple)) and len(band) == 2
+                  and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in band)
+                  and 0.0 <= band[0] < band[1] <= 1.0)
+            if not ok:
+                errors.append(f"motor_bands.{motor_id}.{direction} must be [start, max] with 0 <= start < max <= 1")
+
+
+def motor_band(config: dict[str, Any], motor_id: str, direction: str) -> tuple[float, float]:
+    """The (start, max) power band for one motor and direction: its own if set, else the shared one."""
+    own = config.get("motor_bands", {}).get(motor_id, {}).get(direction)
+    if own is not None:
+        return float(own[0]), float(own[1])
+    tuning = config["tuning"]
+    return tuning[f"{direction}_start"], tuning[f"{direction}_max"]
+
+
 def validate_config(config: dict[str, Any]) -> list[str]:
     """Check a full configuration. Returns a list of problems (empty if valid)."""
     errors: list[str] = []
@@ -398,6 +431,7 @@ def validate_config(config: dict[str, Any]) -> list[str]:
     else:
         for field in TUNING_FIELDS:
             _check_range(errors, field.label, tuning.get(field.key), field.minimum, field.maximum)
+        _validate_motor_bands(config, errors)
         for direction in ("forward", "reverse"):
             start, top = tuning.get(f"{direction}_start"), tuning.get(f"{direction}_max")
             if isinstance(start, (int, float)) and isinstance(top, (int, float)) and start >= top:

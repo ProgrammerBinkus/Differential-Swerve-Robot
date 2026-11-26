@@ -90,3 +90,22 @@ def test_imu_bus_and_direction_are_editable_but_not_its_address():
     assert validate_config(merged) == []
     with pytest.raises(ConfigError):
         merge_config(default_config(), {"imu": {"address": 0x69}})
+
+
+def test_a_motor_can_have_its_own_power_bands():
+    from common.config import motor_band
+    config = default_config()
+    config["tuning"].update(forward_start=0.6, forward_max=0.78, reverse_start=0.15, reverse_max=0.4)
+    config["motor_bands"] = {"M4": {"reverse": [0.1, 0.3]}}
+    assert validate_config(config) == []
+    assert motor_band(config, "M4", "reverse") == (0.1, 0.3)       # its own
+    assert motor_band(config, "M4", "forward") == (0.6, 0.78)      # not set: the shared one
+    assert motor_band(config, "M1", "reverse") == (0.15, 0.4)
+
+
+def test_bad_motor_bands_are_rejected():
+    for bands in ({"M9": {"forward": [0.1, 0.5]}}, {"M1": {"sideways": [0.1, 0.5]}},
+                  {"M1": {"forward": [0.6, 0.5]}}, {"M1": {"forward": [0.1]}}, {"M1": {"forward": [0.1, 1.5]}}):
+        config = default_config()
+        config["motor_bands"] = bands
+        assert any("motor_bands" in e for e in validate_config(config)), bands

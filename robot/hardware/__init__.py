@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from common.config import ENCODER_IDS, HBRIDGE_CHANNELS, HBRIDGE_IDS, motor_channel
+from common.config import ENCODER_IDS, HBRIDGE_CHANNELS, HBRIDGE_IDS, MOTOR_IDS, motor_band, motor_channel
 from robot.hardware.encoder import MT6701, AngleSensor, SimEncoder
 from robot.hardware.errors import HardwareError
 from robot.hardware.imu import Imu
@@ -65,13 +65,13 @@ class Hardware:
                 self.encoders[encoder_id] = replacement
                 log.info("%s moved to %s", encoder_id, bus)
 
-    def apply_tuning(self, tuning: dict[str, Any]) -> None:
-        """Hand the motor-shaping settings (power bands, soft-start ramp) to every channel."""
-        ramp = tuning["motor_ramp"]
-        forward = (tuning["forward_start"], tuning["forward_max"])
-        reverse = (tuning["reverse_start"], tuning["reverse_max"])
-        for output in self.outputs.values():
-            output.configure(forward, reverse, ramp if ramp > 0 else None)
+    def apply_tuning(self, config: dict[str, Any]) -> None:
+        """Hand each motor channel its shaping: its power bands (its own or the shared ones) and the soft start."""
+        ramp = config["tuning"]["motor_ramp"]
+        for motor_id in MOTOR_IDS:
+            output = self.outputs[".".join(motor_channel(config, motor_id))]
+            output.configure(motor_band(config, motor_id, "forward"), motor_band(config, motor_id, "reverse"),
+                             ramp if ramp > 0 else None)
 
     def step(self, dt: float) -> None:
         """Advance the simulator, if there is one."""

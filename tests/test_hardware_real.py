@@ -338,3 +338,16 @@ def test_every_pwm_pin_with_a_free_neighbor_has_its_direction_pin_beside_it():
     # No other PWM pin could have been paired: each has no free pin beside it, or only pin 31 (taken by 29).
     for pwm in set(HEADER_PWM) - together:
         assert {pin for pin in free if _side_by_side(pwm, pin)} <= {31}
+
+
+def test_each_motor_channel_gets_its_own_power_bands(board):
+    config = default_config()
+    config["tuning"].update(forward_start=0.6, forward_max=0.78, reverse_start=0.15, reverse_max=0.4)
+    config["motor_bands"] = {"M2": {"forward": [0.5, 0.7]}}
+    hardware = open_hardware(config, simulate=False)
+    hardware.apply_tuning(config)
+    m2 = hardware.output_for_motor(config, "M2")
+    m1 = hardware.output_for_motor(config, "M1")
+    assert (m2.forward_band, m2.reverse_band) == ((0.5, 0.7), (0.15, 0.4))
+    assert (m1.forward_band, m1.reverse_band) == ((0.6, 0.78), (0.15, 0.4))
+    hardware.close()
