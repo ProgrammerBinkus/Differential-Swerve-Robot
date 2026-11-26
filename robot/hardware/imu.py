@@ -20,6 +20,7 @@ import logging
 import struct
 from typing import Any, Optional, Protocol
 
+from robot.hardware.background import BackgroundGyro
 from robot.hardware.errors import HardwareError
 
 log = logging.getLogger(__name__)
@@ -209,7 +210,7 @@ class Imu:
     def open(cls, imu_config: dict[str, Any]) -> "Imu":
         """Open the MPU-6050 named in the config, or an ``"absent"`` IMU if it is not there."""
         try:
-            source: Optional[GyroSource] = Mpu6050(imu_config["bus"], imu_config["address"])
+            source: Optional[GyroSource] = BackgroundGyro(Mpu6050(imu_config["bus"], imu_config["address"]))
         except HardwareError as exc:
             log.warning("%s. Field-relative drive is unavailable.", exc)
             source = None

@@ -300,6 +300,7 @@ class StationApp:
         elif kind == LINK_EVENT:
             level = "WARNING" if msg["event"] == "error" else "INFO"
             self.terminal.write("station", msg["message"], level)
+            log.log(logging.WARNING if level == "WARNING" else logging.INFO, "%s", msg["message"])
 
     @staticmethod
     def _summarize_telemetry(msg: dict[str, Any]) -> str:
@@ -369,7 +370,12 @@ class StationApp:
         self._robot_host = host
         self.settings.robot_host = host
         self.settings.save()
-        self.link.set_host(host)
+        if not self.link.threads_alive:
+            log.warning("Robot link threads had stopped; starting a new link")
+            self.link.close()
+            self.link = RobotLink(host)
+        else:
+            self.link.set_host(host)
         self.terminal.write("station", f"Looking for {self._target_name()}.")
 
     def _current_host(self) -> str:

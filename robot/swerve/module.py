@@ -54,6 +54,9 @@ class DiffSwerveModule:
         self._motor_b = motor_b
         self._invert_a = module_config["invert_a"]
         self._invert_b = module_config["invert_b"]
+        # The drive sign that runs both motors in reverse (the AT8236's strong direction): with no
+        # inverts, a negative drive. With the two motors inverted differently there is no such sign.
+        self._reverse_drive_sign = None if self._invert_a != self._invert_b else (1.0 if self._invert_a else -1.0)
         self._encoder = encoder
         self._tracker = SteeringAngleTracker(module_config["offset"], module_config["invert_encoder"])
         self._pid = PIDController(0.0, 0.0, 0.0, period_s)
@@ -88,6 +91,7 @@ class DiffSwerveModule:
         self._steer_limit = tuning["steer_limit"]
         self._coupling = tuning["steer_coupling"]
         self._hold_threshold = tuning["hold_threshold"]
+        self._one_way = tuning["one_way_drive"] >= 0.5 and self._reverse_drive_sign is not None
 
     # --------------------------------------------------------------- sensing
 
@@ -140,7 +144,13 @@ class DiffSwerveModule:
             drive = 0.0
         else:
             desired.optimize(current)     # never turn more than 90 degrees; reverse instead
-            desired.cosineScale(current)  # do not push while still turning toward the target
+            if self._one_way and desired.speed * self._reverse_drive_sign < 0.0:
+                # Roll one direction only: turn the wheel around rather than drive its motors forward.
+                desired.speed = -desired.speed
+                desired.angle = desired.angle.rotateBy(Rotation2d(math.pi))
+            # Do not push while still turning toward the target, and never backward while more than
+            # 90 degrees off (possible after a one-way flip).
+            desired.speed *= max(0.0, math.cos(_wrap(desired.angle.radians() - current.radians())))
             self._target_rad = desired.angle.radians()
             drive = desired.speed / max_speed_mps
         steer = self._steer_toward(self._target_rad)

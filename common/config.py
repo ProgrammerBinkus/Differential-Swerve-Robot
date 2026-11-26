@@ -93,6 +93,12 @@ TUNING_FIELDS = (
     TuningField("motor_ramp", "Motor soft start", 0.0, 50.0, 5.0, "/s", 0.5,
                 "How fast a motor's power may rise (full scale per second), so it spins up instead of tripping "
                 "the H-bridge's 4.2 A cut-out. 0 turns it off."),
+    TuningField("one_way_drive", "Roll one direction only", 0.0, 1.0, 0.0, "", 1.0,
+                "1: each wheel only rolls with both motors in reverse (the AT8236's strong direction) and turns "
+                "180° instead of rolling the other way. 0: normal. Needs both of a wheel's motors inverted alike."),
+    TuningField("disable_brake_s", "Brake time after disable", 0.0, 15.0, 15.0, "s", 0.5,
+                "After disabling, brake the motors this long, then let them coast. 15 s stops a fast robot; "
+                "shorter suits H-bridges that misbehave while braking."),
     TuningField("hold_threshold", "Hold-angle threshold", 0.0, 0.2, 0.02, "", 0.005,
                 "Below this speed fraction a wheel keeps its last angle instead of snapping to 0."),
     TuningField("home_tolerance_deg", "Return-to-zero tolerance", 0.5, 20.0, 3.0, "°", 0.1,

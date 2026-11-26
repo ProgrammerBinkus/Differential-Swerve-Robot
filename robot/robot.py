@@ -28,7 +28,7 @@ POWER_OFF_COMMAND = ["sudo", "-n", "/usr/bin/systemctl", "poweroff"]
 
 
 class Mode(enum.Enum):
-    DISABLED = "disabled"   # motors brake for BRAKE_HOLD_S after being disabled, then coast
+    DISABLED = "disabled"   # motors brake for tuning.disable_brake_s after being disabled, then coast
     DRIVE = "drive"         # following the driver's sticks
     HOMING = "homing"       # "Return to Zero": steering every wheel to 0 degrees
     CHECKING = "checking"   # motor check: spinning each motor alone and watching its encoder
@@ -45,7 +45,7 @@ class Robot:
       station has sent "disabled" at least once, so a station that was left
       enabled cannot start the robot moving the moment the link comes back.
     * Disabling (from the station, or by the watchdog) brakes every motor for
-      ``BRAKE_HOLD_S``, so a fast robot slows down instead of coasting far, and
+      ``tuning.disable_brake_s`` (default ``BRAKE_HOLD_S``), so a fast robot slows down instead of coasting far, and
       the steering angles stay put. After that the motors coast, so the robot
       can be pushed and the wheels turned by hand (for Swerve Set Zero).
     * Mapping changes and Swerve Set Zero are only accepted while disabled.
@@ -209,7 +209,8 @@ class Robot:
         if not want_enabled:
             if self._mode is not Mode.DISABLED:
                 if fresh:
-                    log.info("Disabled by the driver station: braking")
+                    log.info("Disabled by the driver station: braking for %.1f s",
+                             self.config["tuning"]["disable_brake_s"])
                 else:
                     log.warning("Disabled: no commands for %.0f ms (watchdog). Braking. Enable again from the "
                                 "driver station.", self.config["watchdog_s"] * 1000)
@@ -218,7 +219,7 @@ class Robot:
                     self._check.abort("the robot was disabled")
                     log.warning("Motor check stopped: the robot was disabled")
                 self._mode = Mode.DISABLED
-                self._brake_until = now + self.BRAKE_HOLD_S
+                self._brake_until = now + self.config["tuning"]["disable_brake_s"]
                 self._drivetrain.brake()
         elif self._mode is Mode.DISABLED:
             log.info("Enabled")

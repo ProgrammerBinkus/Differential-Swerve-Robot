@@ -10,6 +10,7 @@ import logging
 import logging.handlers
 import os
 import sys
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -67,6 +68,14 @@ def install_crash_handler() -> None:
                              f"Details are in {LOG_PATH}")
 
     sys.excepthook = handle
+
+    def handle_thread(args: "threading.ExceptHookArgs") -> None:
+        # A background thread (the robot link) dying is logged, not silent: the window stays open.
+        name = args.thread.name if args.thread else "?"
+        logging.getLogger("station").critical("Background thread %s stopped", name,
+                                              exc_info=(args.exc_type, args.exc_value, args.exc_traceback))
+
+    threading.excepthook = handle_thread
 
 
 def prepare_process() -> None:

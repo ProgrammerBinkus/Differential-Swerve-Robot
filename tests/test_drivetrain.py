@@ -253,3 +253,23 @@ def test_failed_reads_widen_the_allowance(rig):
     drivetrain.read_sensors()
     assert fl.rejected_reads == 0
     assert fl.raw == encoder.raw
+
+
+def test_one_way_drive_rolls_every_wheel_backward_and_still_moves_forward():
+    """With "roll one direction only", wheels turn around instead of driving their motors forward."""
+    config = default_config()
+    config["tuning"]["one_way_drive"] = 1.0
+    hardware = open_hardware(config, simulate=True)
+    drivetrain = Drivetrain.from_config(hardware, config)
+    drivetrain.read_sensors()
+    rig_ = (hardware, drivetrain)
+    run(rig_, 3.0, lambda d: d.drive(0.5, 0.0, 0.0))
+    for module in drivetrain.modules:
+        assert module.drive <= 0.0, module.name                        # both motors in reverse
+        assert facing(math.degrees(module.angle_rad), 180.0), module.name  # pointing backward
+    assert hardware._plant.chassis_vx_mps > 0.1                         # yet the robot moves forward
+
+
+def test_one_way_drive_off_is_the_normal_behaviour(rig):
+    run(rig, 2.0, lambda d: d.drive(0.5, 0.0, 0.0))
+    assert all(m.drive > 0.0 for m in rig[1].modules)

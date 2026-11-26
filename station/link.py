@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import logging
 import queue
 import socket
 import threading
@@ -16,6 +17,8 @@ from common.protocol import (
 
 # Messages the link itself generates for the UI (never sent over the network).
 LINK_EVENT = "_link"
+
+log = logging.getLogger(__name__)
 
 
 class RobotLink:
@@ -32,7 +35,10 @@ class RobotLink:
     only ever touched from the UI thread.
     """
 
-    TELEMETRY_TIMEOUT_S = 0.5
+    # How long without robot telemetry before the station disables. Motor noise can stall the robot's
+    # Wi-Fi for a few hundred ms; 1.5 s rides through that. The robot's own watchdog (watchdog_s) still
+    # stops it when commands stop arriving.
+    TELEMETRY_TIMEOUT_S = 1.5
     RECONNECT_DELAY_S = 1.5
     COMMAND_INTERVAL_S = 1.0 / COMMAND_RATE_HZ
     STALE_COMMAND_S = 1.0
@@ -71,6 +77,11 @@ class RobotLink:
     @property
     def telemetry_alive(self) -> bool:
         return time.monotonic() - self._last_telemetry_time < self.TELEMETRY_TIMEOUT_S
+
+    @property
+    def threads_alive(self) -> bool:
+        """False if a background thread has stopped, so this link can no longer connect."""
+        return self._thread.is_alive() and self._sender.is_alive()
 
     @property
     def control_connected(self) -> bool:
@@ -122,7 +133,10 @@ class RobotLink:
             with self._send_lock:
                 command, age = self._command, time.monotonic() - self._command_time
             if command is not None and age < self.STALE_COMMAND_S:
-                self._transmit(command)
+                try:
+                    self._transmit(command)
+                except Exception:   # noqa: BLE001 - a dead sender would leave the robot without commands
+                    log.exception("Sending a drive command failed")
             next_send += self.COMMAND_INTERVAL_S
             delay = next_send - time.monotonic()
             if delay > 0:
@@ -186,6 +200,19 @@ class RobotLink:
         self._inbox.put({"type": LINK_EVENT, "event": event, "message": message})
 
     def _control_loop(self) -> None:
+        """Keeps the control connection up. An unexpected error is logged and the loop carries on:
+        if this thread died, Connect would do nothing until the station was restarted."""
+        while self._running:
+            try:
+                self._connect_and_read()
+            except Exception as exc:   # noqa: BLE001 - keep the link alive whatever went wrong
+                log.exception("Robot link error")
+                with self._lock:
+                    self._tcp = None
+                self._event("error", f"Robot link error: {exc!r}; retrying")
+                self._host_changed.wait(self.RECONNECT_DELAY_S)
+
+    def _connect_and_read(self) -> None:
         last_problem = ""
         while self._running:
             self._host_changed.clear()

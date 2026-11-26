@@ -175,3 +175,13 @@ def test_stop_request_ends_the_loop_promptly(robot):
         robot.request_stop()
     worker.join(timeout=3.0)
     assert not worker.is_alive()
+
+
+def test_brake_time_after_disable_is_a_setting(robot):
+    robot.config["tuning"]["disable_brake_s"] = 1.0
+    run(robot, 0.05, DriveCommand(seq=1, enabled=False))
+    run(robot, 0.05, DriveCommand(seq=2, enabled=True))
+    run(robot, 0.05, DriveCommand(seq=3, enabled=False))
+    assert all(o.braking for o in outputs(robot))
+    run(robot, 1.1, DriveCommand(seq=4, enabled=False))
+    assert not any(o.braking for o in outputs(robot))          # coasting after 1 s, not 15

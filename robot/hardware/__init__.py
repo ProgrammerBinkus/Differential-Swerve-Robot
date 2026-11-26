@@ -6,6 +6,7 @@ import logging
 from typing import Any, Optional
 
 from common.config import ENCODER_IDS, HBRIDGE_CHANNELS, HBRIDGE_IDS, MOTOR_IDS, motor_band, motor_channel
+from robot.hardware.background import BackgroundEncoder
 from robot.hardware.encoder import MT6701, AngleSensor, SimEncoder
 from robot.hardware.errors import HardwareError
 from robot.hardware.imu import Imu
@@ -60,7 +61,7 @@ class Hardware:
             bus = config["encoders"][encoder_id]["bus"]
             current = self.encoders[encoder_id]
             if getattr(current, "bus_path", None) != bus:
-                replacement = MT6701(bus)  # raises HardwareError before anything is closed
+                replacement = BackgroundEncoder(MT6701(bus))  # raises HardwareError before anything is closed
                 current.close()
                 self.encoders[encoder_id] = replacement
                 log.info("%s moved to %s", encoder_id, bus)
@@ -110,7 +111,7 @@ def open_hardware(config: dict[str, Any], simulate: bool) -> Hardware:
                 opened.append(outputs[name])
         encoders = {}
         for encoder_id in ENCODER_IDS:
-            encoders[encoder_id] = MT6701(config["encoders"][encoder_id]["bus"])
+            encoders[encoder_id] = BackgroundEncoder(MT6701(config["encoders"][encoder_id]["bus"]))
             opened.append(encoders[encoder_id])
     except Exception:
         for device in reversed(opened):

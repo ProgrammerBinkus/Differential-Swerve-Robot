@@ -42,3 +42,29 @@ def test_sends_steadily_and_stops_when_the_ui_goes_quiet():
     finally:
         link.close()
         robot.close()
+
+
+def test_control_thread_survives_an_unexpected_error(monkeypatch):
+    """A crash in the connect loop used to kill the thread, so Connect did nothing until a restart."""
+    calls = []
+    real = socket.getaddrinfo
+
+    def flaky(*args, **kwargs):
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("boom")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(socket, "getaddrinfo", flaky)
+    monkeypatch.setattr(RobotLink, "RECONNECT_DELAY_S", 0.05)
+    link = RobotLink("127.0.0.1", udp_port=unused_tcp_port(), tcp_port=unused_tcp_port())
+    try:
+        deadline = time.monotonic() + 3
+        while len(calls) < 2 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert len(calls) >= 2          # it tried again after the error
+        assert link.threads_alive
+        events = [m for m in link.poll() if m.get("event") == "error"]
+        assert any("boom" in m["message"] for m in events)
+    finally:
+        link.close()
